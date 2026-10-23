@@ -52,6 +52,7 @@ export function buildSegments(unit: NonNullable<RangeDef["segment"]>, times: num
   const starts = new Map<number, Date>();
   for (const t of times) {
     const d = new Date(t * 1000);
+    if (unit === "day" && (d.getDay() === 0 || d.getDay() === 6)) continue; // 토·일 칩은 만들지 않음
     d.setHours(0, 0, 0, 0);
     if (unit === "week") d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // 월요일 시작
     if (unit === "year") d.setMonth(0, 1);

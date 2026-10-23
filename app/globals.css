@@ -235,6 +235,7 @@ section h2 small { margin-left: 8px; font-size: 12px; font-weight: 500; }
 .compare-plot svg { display: block; overflow: visible; }
 .compare .gridline { stroke: var(--border); stroke-width: 1; }
 .compare .axis-zero { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.compare .gap-mark { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 1 4; opacity: 0.6; }
 .compare .crosshair { stroke: var(--muted); stroke-width: 1; }
 .compare .dot { stroke: var(--surface); stroke-width: 2; }
 .tick-label { fill: var(--muted); font-size: 11px; }

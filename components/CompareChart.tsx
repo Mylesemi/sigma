@@ -89,6 +89,29 @@ function logTicks(rMin: number, rMax: number) {
   return (fine.length > 7 ? pick([1]) : fine).map((r) => (r - 1) * 100);
 }
 
+// 데이터가 없는 긴 구간(주말 등)을 x축에서 접어 붙이는 시간 변환
+// 간격이 중앙값의 6배이자 3시간을 넘으면 그 구간을 중앙값 하나 길이로 줄임
+function gapCompressor(times: number[]) {
+  const ts = [...new Set(times)].sort((a, b) => a - b);
+  const diffs = ts.slice(1).map((t, i) => t - ts[i]);
+  const step = diffs.length ? [...diffs].sort((a, b) => a - b)[diffs.length >> 1] : 0;
+  const gaps: { start: number; end: number; removed: number }[] = [];
+  diffs.forEach((d, i) => {
+    if (d > step * 6 && d > 3 * 3600) gaps.push({ start: ts[i], end: ts[i + 1], removed: d - step });
+  });
+  const map = (t: number) => {
+    let out = t;
+    for (const g of gaps) {
+      if (t >= g.end) out -= g.removed;
+      else if (t > g.start) out -= Math.min(t - g.start, g.removed); // 접힌 구간 안의 시각은 시작점 쪽으로
+    }
+    return out;
+  };
+  // 접힌 구간 안의 시각 → 데이터가 다시 시작하는 시각 (예: 월요일 자정 눈금 → 월요일 장 시작)
+  const snap = (t: number) => gaps.find((g) => t > g.start && t < g.end)?.end ?? t;
+  return { map, snap, gaps };
+}
+
 // t 시점 직전(포함)의 값 — 거래 시간이 다른 자산도 같은 시각으로 읽기 위함
 function valueAt(pts: Series["pts"], t: number) {
   if (!pts.length || t < pts[0].t) return null;
@@ -170,17 +193,22 @@ export default function CompareChart({ quotes, resetKey }: { quotes: Quote[]; re
 
   const plotW = Math.max(0, width - PAD.left - PAD.right);
   const plotH = H - PAD.top - PAD.bottom;
-  const x = (t: number) => PAD.left + (t1 > t0 ? ((t - t0) / (t1 - t0)) * plotW : plotW / 2);
+  const gap = gapCompressor(all.map((p) => p.t));
+  const c0 = gap.map(t0);
+  const c1 = gap.map(t1);
+  const x = (t: number) => PAD.left + (c1 > c0 ? ((gap.map(t) - c0) / (c1 - c0)) * plotW : plotW / 2);
   const y = (v: number) => PAD.top + (1 - (f(v) - y0) / (y1 - y0 || 1)) * plotH;
 
-  const xTicks = t1 > t0 ? calendarTicks(t0, t1, range, Math.max(2, Math.floor(plotW / 70))) : [];
+  const xTicks = (t1 > t0 ? calendarTicks(t0, t1, range, Math.max(2, Math.floor(plotW / 70))) : [])
+    .map(gap.snap)
+    .filter((t, i, arr) => i === 0 || x(t) - x(arr[i - 1]) > 36); // 겹치는 라벨 제거
 
   const onMove = (e: React.PointerEvent<SVGRectElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const t = t0 + ((e.clientX - rect.left) / rect.width) * (t1 - t0);
-    // 가장 가까운 실제 데이터 시각으로 스냅
+    const px = PAD.left + ((e.clientX - rect.left) / rect.width) * plotW;
+    // 화면상 가장 가까운 실제 데이터 시각으로 스냅 (x축이 접혀 있어 시간이 아닌 픽셀로 비교)
     let best = t0;
-    for (const s of visible) for (const p of s.pts) if (Math.abs(p.t - t) < Math.abs(best - t)) best = p.t;
+    for (const s of visible) for (const p of s.pts) if (Math.abs(x(p.t) - px) < Math.abs(x(best) - px)) best = p.t;
     setHoverT(best);
   };
 
@@ -263,6 +291,12 @@ export default function CompareChart({ quotes, resetKey }: { quotes: Quote[]; re
               >
                 {fmtAxisTime(t, range)}
               </text>
+            ))}
+
+            {gap.gaps.map((g) => (
+              <line key={g.start} x1={x(g.end)} x2={x(g.end)} y1={PAD.top} y2={PAD.top + plotH} className="gap-mark">
+                <title>데이터 없는 구간(주말·휴장) 생략</title>
+              </line>
             ))}
 
             {visible.map((s) => (

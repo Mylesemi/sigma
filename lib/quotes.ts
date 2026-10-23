@@ -89,8 +89,17 @@ async function fetchQuote(def: SymbolDef, range: RangeDef, win: QuoteWindow | nu
     const closes: (number | null)[] = ohlc?.close ?? [];
     const highsRaw: (number | null)[] = ohlc?.high ?? [];
     const lowsRaw: (number | null)[] = ohlc?.low ?? [];
+    // 토·일 데이터 제외 (가상자산 등 주말 거래분). 거래소 현지 시각 기준으로 판단해야
+    // 미국 금요일 장(한국 시간 토요일 새벽)이 잘리지 않음. 1일 기간과 주봉·월봉(봉 날짜가 주말일 수 있음)은 제외
+    const interval = win ? segmentQuery(win.from, win.to).interval : range.interval;
+    const skipWeekends = (win != null || range.key !== "1d") && interval !== "1wk" && interval !== "1mo";
+    const offset: number = meta.gmtoffset ?? 0;
+    const isWeekend = (t: number) => {
+      const day = new Date((t + offset) * 1000).getUTCDay();
+      return day === 0 || day === 6;
+    };
     const valid = dropSpikes(
-      closes.flatMap((v, i) => (isNum(v) && v > 0 && ts[i] != null ? [i] : [])),
+      closes.flatMap((v, i) => (isNum(v) && v > 0 && ts[i] != null && !(skipWeekends && isWeekend(ts[i])) ? [i] : [])),
       closes,
     );
     const spark = valid.map((i) => closes[i] as number);
