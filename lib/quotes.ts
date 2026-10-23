@@ -35,7 +35,7 @@ async function fetchQuote(def: SymbolDef): Promise<Quote> {
   try {
     const url = `${CHART_URL}${encodeURIComponent(def.symbol)}?range=1d&interval=5m`;
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (eSignal)" },
+      headers: { "User-Agent": "Mozilla/5.0 (SIGMA)" },
       signal: AbortSignal.timeout(8000),
       cache: "no-store",
     });

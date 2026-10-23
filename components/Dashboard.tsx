@@ -49,10 +49,10 @@ export default function Dashboard() {
     <>
       <header className="topbar">
         <div className="brand">
-          <span className="logo">e</span>
+          <span className="logo">Σ</span>
           <span>
-            <strong>eSignal</strong>
-            <small>실시간 시장 지표</small>
+            <strong>SIGMA</strong>
+            <small>Signals &amp; Indicators for Global Market Analysis</small>
           </span>
         </div>
         <div className="status">

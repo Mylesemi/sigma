@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "eSignal — 실시간 환율 · 원자재 · 시장 지표",
-  description: "환율, 원자재, 주가지수, 금리 등 주요 시장 지표를 한눈에 확인하세요.",
+  title: "SIGMA — Signals & Indicators for Global Market Analysis",
+  description: "SIGMA: 환율, 원자재, 주가지수, 금리 등 주요 시장 지표를 한눈에 확인하세요.",
 };
 
 export const viewport: Viewport = {

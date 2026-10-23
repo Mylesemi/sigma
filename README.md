@@ -1,6 +1,6 @@
-# eSignal
+# SIGMA
 
-환율 · 원자재 · 주가지수 · 금리 등 주요 시장 지표를 한눈에 보는 실시간 대시보드.
+**S**ignals & **I**ndicators for **G**lobal **M**arket **A**nalysis — 환율 · 원자재 · 주가지수 · 금리 등 주요 시장 지표를 한눈에 보는 실시간 대시보드.
 
 - Next.js (App Router) + TypeScript, 외부 UI 라이브러리 없음
 - 데이터: Yahoo Finance 차트 API (API 키 불필요), `/api/quotes`에서 서버 측 조회
