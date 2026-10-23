@@ -1,4 +1,4 @@
-import { SYMBOLS, type SymbolDef } from "./symbols";
+import { SYMBOLS, isBuiltin, type SymbolDef } from "./symbols";
 import { RANGES, segmentQuery, type RangeDef, type RangeKey } from "./ranges";
 
 export interface Quote extends SymbolDef {
@@ -11,6 +11,8 @@ export interface Quote extends SymbolDef {
   marketTime: number | null; // unix seconds
   spark: number[];
   times: number[]; // spark와 같은 길이의 unix seconds
+  ext?: number[]; // spark와 같은 길이, 1 = 정규장 외(프리·애프터마켓) — 장외 시세가 있는 개별 주식만
+  extPrice?: number | null; // 최신 장외 가격 (마지막 점이 장외일 때)
   error?: string;
 }
 
@@ -29,11 +31,48 @@ export interface QuotesResponse {
 
 const CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/";
 
+const intervalOf = (range: RangeDef, win: QuoteWindow | null) => (win ? segmentQuery(win.from, win.to).interval : range.interval);
+// 분봉·시간봉은 장외(프리·애프터마켓) 시세 포함 — 일봉 이상에는 효과 없음. Yahoo는 미국 개별 주식에만 장외 시세를 줌
+const isIntraday = (interval: string) => /^\d+[mh]$/.test(interval);
+
 function chartQuery(range: RangeDef, win: QuoteWindow | null) {
-  if (win) return `period1=${win.from}&period2=${win.to}&interval=${segmentQuery(win.from, win.to).interval}`;
-  if (range.key === "1d") return `range=1d&interval=${range.interval}`;
+  const interval = intervalOf(range, win);
+  const prePost = isIntraday(interval) ? "&includePrePost=true" : "";
+  if (win) return `period1=${win.from}&period2=${win.to}&interval=${interval}${prePost}`;
+  if (range.key === "1d") return `range=1d&interval=${interval}${prePost}`;
   const now = Math.floor(Date.now() / 1000);
-  return `period1=${now - range.days * 86400}&period2=${now}&interval=${range.interval}`;
+  return `period1=${now - range.days * 86400}&period2=${now}&interval=${interval}${prePost}`;
+}
+
+interface Period {
+  start: number;
+  end: number;
+  gmtoffset?: number;
+}
+
+// 정규장인지 판정: [start, end) 안이면 정규장, end와 정확히 같으면 "경계", 그 밖은 장외
+// (개별 주식·ETF만 — 환율·선물은 '정규장' 개념이 달라 표시하지 않음)
+// 날짜별 정규장 시간(tradingPeriods)이 있으면 그것을, 없으면 오늘 정규장의 시각을 매일 같은 시각으로 적용
+export type Session = "regular" | "edge" | "ext";
+export function regularSessionTest(meta: {
+  instrumentType?: string;
+  gmtoffset?: number;
+  tradingPeriods?: { regular?: Period[][] } | Period[][];
+  currentTradingPeriod?: { regular?: Period };
+}): ((t: number) => Session) | null {
+  if (meta.instrumentType !== "EQUITY" && meta.instrumentType !== "ETF") return null;
+  const tp = meta.tradingPeriods;
+  const regular = (Array.isArray(tp) ? tp : tp?.regular)?.flat().filter((p) => p && p.end > p.start);
+  if (regular?.length)
+    return (t) => (regular.some((p) => t >= p.start && t < p.end) ? "regular" : regular.some((p) => t === p.end) ? "edge" : "ext");
+  const cur = meta.currentTradingPeriod?.regular;
+  if (!cur) return null;
+  const off = meta.gmtoffset ?? 0;
+  const tod = (t: number) => (((t + off) % 86400) + 86400) % 86400;
+  const rs = tod(cur.start);
+  const re = tod(cur.end) || 86400;
+  if (re <= rs) return null;
+  return (t) => (tod(t) >= rs && tod(t) < re ? "regular" : tod(t) === re % 86400 ? "edge" : "ext");
 }
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -83,6 +122,15 @@ async function fetchQuote(def: SymbolDef, range: RangeDef, win: QuoteWindow | nu
     if (!meta) return { ...empty, error: "no data" };
 
     const prevClose: number | null = meta.chartPreviousClose ?? meta.previousClose ?? null;
+    // 사용자가 추가한 종목은 이름·통화·자릿수를 시세 응답에서 채움 (원화·엔화 등은 소수점 없음 — Yahoo priceHint는 원화에도 2)
+    const currency: string | undefined = meta.currency;
+    const info: Partial<SymbolDef> = def.custom
+      ? {
+          name: meta.shortName ?? meta.longName ?? def.symbol,
+          sub: currency ? `${def.symbol} · ${currency}` : def.symbol,
+          digits: currency && ["KRW", "JPY", "IDR", "VND"].includes(currency) ? 0 : 2,
+        }
+      : {};
 
     const ohlc = result?.indicators?.quote?.[0];
     const ts: number[] = result?.timestamp ?? [];
@@ -91,7 +139,7 @@ async function fetchQuote(def: SymbolDef, range: RangeDef, win: QuoteWindow | nu
     const lowsRaw: (number | null)[] = ohlc?.low ?? [];
     // 토·일 데이터 제외 (가상자산 등 주말 거래분). 거래소 현지 시각 기준으로 판단해야
     // 미국 금요일 장(한국 시간 토요일 새벽)이 잘리지 않음. 1일 기간과 주봉·월봉(봉 날짜가 주말일 수 있음)은 제외
-    const interval = win ? segmentQuery(win.from, win.to).interval : range.interval;
+    const interval = intervalOf(range, win);
     const skipWeekends = (win != null || range.key !== "1d") && interval !== "1wk" && interval !== "1mo";
     const offset: number = meta.gmtoffset ?? 0;
     const isWeekend = (t: number) => {
@@ -109,6 +157,13 @@ async function fetchQuote(def: SymbolDef, range: RangeDef, win: QuoteWindow | nu
     const highs = valid.flatMap((i) => (near(highsRaw[i], i) ? [highsRaw[i] as number] : []));
     const lows = valid.flatMap((i) => (near(lowsRaw[i], i) ? [lowsRaw[i] as number] : []));
     const isDay = range.key === "1d" && !win;
+    // 장외 구간 표시 — 정규장 밖의 점이 실제로 있을 때만 (장외 시세가 없는 한국 주식 등은 표시 안 함)
+    // 정규장 종료 시각과 같은 봉은 한국장 동시호가 종가처럼 정규장일 수도, 미국 애프터마켓 첫 봉일 수도 있어
+    // 장외 점이 있는 종목에서만 장외로 봄
+    const session = isIntraday(interval) ? regularSessionTest(meta) : null;
+    const sessions = session ? times.map(session) : [];
+    const hasExt = sessions.includes("ext");
+    const ext = hasExt ? sessions.map((s) => (s === "regular" ? 0 : 1)) : [];
     // 과거 구간은 현재가 대신 구간 마지막 종가를 기준으로 표시
     const price: number | null = win ? (spark[spark.length - 1] ?? null) : (meta.regularMarketPrice ?? null);
     const marketTime: number | null = win ? (times[times.length - 1] ?? null) : (meta.regularMarketTime ?? null);
@@ -116,10 +171,11 @@ async function fetchQuote(def: SymbolDef, range: RangeDef, win: QuoteWindow | nu
     const changePct = change != null && prevClose ? (change / prevClose) * 100 : null;
     // 일부 심볼(예: CNYKRW=X)은 장기 기간에 데이터가 거의 없고, 주말 등 휴장 구간도 비어 있음
     // → 하루 등락이 기간 등락처럼 보이지 않게 처리
-    if (!isDay && spark.length < 2) return { ...empty, price, marketTime, error: "no range data" };
+    if (!isDay && spark.length < 2) return { ...empty, ...info, price, marketTime, error: "no range data" };
 
     return {
       ...empty,
+      ...info,
       price,
       prevClose,
       change,
@@ -130,13 +186,18 @@ async function fetchQuote(def: SymbolDef, range: RangeDef, win: QuoteWindow | nu
       marketTime,
       spark,
       times,
+      ...(hasExt ? { ext, extPrice: !win && ext[ext.length - 1] === 1 ? spark[spark.length - 1] : null } : {}),
     };
   } catch (e) {
     return { ...empty, error: e instanceof Error ? e.message : "fetch failed" };
   }
 }
 
-export async function getQuotes(range: RangeDef = RANGES[0], win: QuoteWindow | null = null): Promise<QuotesResponse> {
-  const quotes = await Promise.all(SYMBOLS.map((def) => fetchQuote(def, range, win)));
+// extra: 사용자가 웹에서 추가한 종목 티커 (검증은 라우트에서)
+export async function getQuotes(range: RangeDef = RANGES[0], win: QuoteWindow | null = null, extra: string[] = []): Promise<QuotesResponse> {
+  const customDefs: SymbolDef[] = extra
+    .filter((s) => !isBuiltin(s))
+    .map((symbol) => ({ symbol, name: symbol, sub: symbol, category: "stock", digits: 2, custom: true }));
+  const quotes = await Promise.all([...SYMBOLS, ...customDefs].map((def) => fetchQuote(def, range, win)));
   return { range: range.key, window: win, updatedAt: new Date().toISOString(), quotes };
 }

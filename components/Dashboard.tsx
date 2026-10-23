@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { loadCustomStocks, saveCustomStocks, type CustomStock } from "@/lib/customStocks";
 import type { Quote, QuotesResponse } from "@/lib/quotes";
 import { RANGES, buildSegments, getRange, type RangeKey, type Segment } from "@/lib/ranges";
-import { CATEGORIES } from "@/lib/symbols";
+import { CATEGORIES, SYMBOLS, isBuiltin } from "@/lib/symbols";
 import { DEFAULT_STATE, MAX_PICKS, parseUrlState, toSearch, type Filter, type View } from "@/lib/urlState";
 import CompareChart from "./CompareChart";
 import ErrorBoundary from "./ErrorBoundary";
 import PickList from "./PickList";
 import QuoteCard from "./QuoteCard";
 import SegmentPicker from "./SegmentPicker";
+import StockSearch from "./StockSearch";
 
 const REFRESH_MS = 30_000;
 const TICKER = ["KRW=X", "^KS11", "^GSPC", "^IXIC", "GC=F", "CL=F", "^TNX", "BTC-USD"];
@@ -46,6 +48,7 @@ export default function Dashboard() {
   const [range, setRange] = useState<RangeKey>(DEFAULT_STATE.range);
   const [view, setView] = useState<View>(DEFAULT_STATE.view);
   const [picks, setPicks] = useState<Pick[]>(toPicks(DEFAULT_STATE.picks));
+  const [customStocks, setCustomStocks] = useState<CustomStock[]>([]); // 웹에서 추가한 종목 (브라우저에 저장)
   // 하위 구간 목록은 어느 기간의 것인지와 함께 보관 (다른 기간 목록이 잠깐이라도 보이지 않게)
   const [segInfo, setSegInfo] = useState<{ range: RangeKey; list: Segment[] }>({ range: DEFAULT_STATE.range, list: [] });
   const segments = segInfo.range === range ? segInfo.list : [];
@@ -68,7 +71,10 @@ export default function Dashboard() {
       setView(s.view);
       setPicks(toPicks(s.picks));
       setSeg(segmentFrom(s.range, s.seg));
-      if (initial) fromUrl.current = true;
+      if (initial) {
+        fromUrl.current = true;
+        setCustomStocks(loadCustomStocks());
+      }
       setReady(true);
     };
     apply(true);
@@ -104,10 +110,26 @@ export default function Dashboard() {
     });
   const removePick = (symbol: string) => setPicks((prev) => prev.filter((p) => p.symbol !== symbol));
 
+  const updateCustom = (fn: (prev: CustomStock[]) => CustomStock[]) =>
+    setCustomStocks((prev) => {
+      const next = fn(prev);
+      saveCustomStocks(next);
+      return next;
+    });
+  const addCustom = (stock: CustomStock) =>
+    updateCustom((prev) => (prev.some((s) => s.symbol === stock.symbol) ? prev : [...prev, stock]));
+  const removeCustom = (symbol: string) => updateCustom((prev) => prev.filter((s) => s.symbol !== symbol));
+
+  // 기본 목록에 없는 종목은 함께 조회 — 추가한 종목 + 공유 링크로 받은 직접 비교 종목. 정렬해 CDN 캐시 키를 맞춤
+  const extra = useMemo(
+    () => [...new Set([...customStocks.map((s) => s.symbol), ...picks.map((p) => p.symbol)])].filter((s) => !isBuiltin(s)).sort().join(","),
+    [customStocks, picks],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = seg ? `range=${range}&from=${seg.from}&to=${seg.to}` : `range=${range}`;
+      const qs = (seg ? `range=${range}&from=${seg.from}&to=${seg.to}` : `range=${range}`) + (extra ? `&extra=${encodeURIComponent(extra)}` : "");
       // CDN은 캐시하되 브라우저는 매번 새로 요청 (stale-while-revalidate로 오래된 시세가 보이지 않도록)
       const res = await fetch(`/api/quotes?${qs}`, { cache: "no-store" });
       if (!res.ok) throw new Error(String(res.status));
@@ -131,7 +153,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [range, seg]);
+  }, [range, seg, extra]);
 
   useEffect(() => {
     if (!ready) return;
@@ -158,7 +180,16 @@ export default function Dashboard() {
     : shownRange.key === "1d"
       ? "전일 종가 대비"
       : `${shownRange.label} 전 대비`;
-  const quotes = data?.quotes ?? [];
+  // 추가한 종목은 검색 때 고른 이름(한글명 등)으로 표시
+  const quotes = useMemo(() => {
+    const names = new Map(customStocks.map((s) => [s.symbol, s.name]));
+    return (data?.quotes ?? []).map((q) => (names.has(q.symbol) ? { ...q, name: names.get(q.symbol)! } : q));
+  }, [data, customStocks]);
+  const customSet = new Set(customStocks.map((s) => s.symbol));
+  const pickOptions = [
+    ...SYMBOLS.map(({ symbol, name, category }) => ({ symbol, name, category })),
+    ...customStocks.map((s) => ({ symbol: s.symbol, name: s.name, category: "stock" as const })),
+  ];
   const tickerItems = TICKER.map((s) => quotes.find((q) => q.symbol === s)).filter(Boolean);
   const pickedQuotes = picks.flatMap((p) => quotes.filter((q) => q.symbol === p.symbol));
   const sections: Section[] =
@@ -167,7 +198,8 @@ export default function Dashboard() {
       : CATEGORIES.filter((c) => filter === "all" || c.key === filter).map((c) => ({
           key: c.key,
           title: c.title,
-          quotes: quotes.filter((q) => q.category === c.key),
+          // 공유 링크의 직접 비교 때문에 함께 받은 종목은 개별 종목 목록에 넣지 않음
+          quotes: quotes.filter((q) => q.category === c.key && (!q.custom || customSet.has(q.symbol))),
         }));
 
   return (
@@ -255,8 +287,15 @@ export default function Dashboard() {
               {data && <small>{baseLabel}</small>}
             </h2>
             {c.key === "custom" && (
-              <PickList picks={picks.map((p) => p.symbol)} slots={picks.map((p) => p.slot)} onAdd={addPick} onRemove={removePick} />
+              <PickList
+                options={pickOptions}
+                picks={picks.map((p) => p.symbol)}
+                slots={picks.map((p) => p.slot)}
+                onAdd={addPick}
+                onRemove={removePick}
+              />
             )}
+            {c.key === "stock" && <StockSearch stocks={customStocks} onAdd={addCustom} onRemove={removeCustom} />}
             {c.key === "custom" && picks.length === 0 ? (
               <div className="compare compare-empty">비교할 자산을 추가하세요.</div>
             ) : view === "compare" ? (

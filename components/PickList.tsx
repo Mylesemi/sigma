@@ -1,9 +1,10 @@
 "use client";
 
-import { CATEGORIES, SYMBOLS } from "@/lib/symbols";
+import { CATEGORIES, type Category } from "@/lib/symbols";
 import { MAX_PICKS } from "@/lib/urlState";
 
 interface Props {
+  options: { symbol: string; name: string; category: Category }[]; // 기본 종목 + 웹에서 추가한 종목
   picks: string[];
   slots: number[]; // picks와 같은 순서의 색상 슬롯
   onAdd: (symbol: string) => void;
@@ -11,12 +12,12 @@ interface Props {
 }
 
 // 카테고리와 상관없이 비교할 자산을 고르는 목록
-export default function PickList({ picks, slots, onAdd, onRemove }: Props) {
+export default function PickList({ options, picks, slots, onAdd, onRemove }: Props) {
   const full = picks.length >= MAX_PICKS;
   return (
     <div className="picks">
       {picks.map((sym, i) => {
-        const def = SYMBOLS.find((d) => d.symbol === sym);
+        const def = options.find((d) => d.symbol === sym);
         return (
           <span key={sym} className="pick">
             <span className="key" style={{ background: `var(--s${slots[i] + 1})` }} />
@@ -36,7 +37,7 @@ export default function PickList({ picks, slots, onAdd, onRemove }: Props) {
         <option value="">{full ? `최대 ${MAX_PICKS}개` : "+ 자산 추가"}</option>
         {CATEGORIES.map((c) => (
           <optgroup key={c.key} label={c.title}>
-            {SYMBOLS.filter((d) => d.category === c.key && !picks.includes(d.symbol)).map((d) => (
+            {options.filter((d) => d.category === c.key && !picks.includes(d.symbol)).map((d) => (
               <option key={d.symbol} value={d.symbol}>
                 {d.name}
               </option>

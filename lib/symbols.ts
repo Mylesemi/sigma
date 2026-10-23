@@ -6,7 +6,15 @@ export interface SymbolDef {
   sub: string;
   category: Category;
   digits: number;
+  custom?: boolean; // 사용자가 웹에서 추가한 종목 (이름·통화·자릿수는 시세 응답에서 채움)
 }
+
+// Yahoo 티커 형식 (예: AAPL, 005930.KS, BRK-B, ^GSPC, KRW=X)
+const SYMBOL_RE = /^[A-Z0-9^][A-Z0-9.\-=^]{0,19}$/;
+export const isValidSymbol = (s: string) => SYMBOL_RE.test(s);
+export const isBuiltin = (s: string) => SYMBOLS.some((d) => d.symbol === s);
+
+export const MAX_CUSTOM = 20; // 웹에서 추가할 수 있는 종목 수
 
 export const CATEGORIES: { key: Category; title: string }[] = [
   { key: "fx", title: "환율" },

@@ -62,6 +62,14 @@ export default function QuoteCard({ q }: { q: Quote }) {
         )}
       </div>
 
+      {/* 장외 거래 중이면 정규장 종가와 별도로 시간외 가격 표시 (미국 개별 주식) */}
+      {q.extPrice != null && q.price != null && (
+        <div className={`ext-price ${q.extPrice > q.price ? "up" : q.extPrice < q.price ? "down" : "flat"}`}>
+          <span>시간외</span> {fmt(q.extPrice, q.digits)}{" "}
+          {`${q.extPrice >= q.price ? "+" : ""}${((q.extPrice / q.price - 1) * 100).toFixed(2)}%`}
+        </div>
+      )}
+
       <Sparkline data={q.spark} baseline={q.prevClose} up={dir !== "down"} />
 
       <footer className="range">

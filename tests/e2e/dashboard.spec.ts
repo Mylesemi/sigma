@@ -19,14 +19,14 @@ test("비교 보기: 카테고리마다 차트, 범례로 숨기기, 전부 숨�
   await mockQuotes(page);
   await page.goto("/?view=compare&cat=stock");
   const chart = page.locator(".compare").first();
-  await expect(chart.locator("svg path[stroke^='var(--s']")).toHaveCount(3);
+  await expect(chart.locator("svg g[stroke^='var(--s']")).toHaveCount(3);
   await chart.getByRole("button", { name: /애플/ }).click();
-  await expect(chart.locator("svg path[stroke^='var(--s']")).toHaveCount(2);
+  await expect(chart.locator("svg g[stroke^='var(--s']")).toHaveCount(2);
   await chart.getByRole("button", { name: /삼성전자/ }).click();
   await chart.getByRole("button", { name: /테슬라/ }).click();
   await expect(chart.getByText("범례에서 비교할 자산을 선택하세요.")).toBeVisible();
   await chart.getByRole("button", { name: "모두 보기" }).click();
-  await expect(chart.locator("svg path[stroke^='var(--s']")).toHaveCount(3);
+  await expect(chart.locator("svg g[stroke^='var(--s']")).toHaveCount(3);
 });
 
 test("비교 보기: 호버하면 모든 자산 값이 툴팁에 표시", async ({ page }) => {
@@ -134,7 +134,7 @@ test("직접 비교: 기본 3개, 추가·삭제, 남은 자산의 색 유지, �
   await page.getByRole("button", { name: "직접 비교" }).click();
   const picks = page.locator(".pick");
   await expect(picks).toHaveText([/코스피/, /삼성전자/, /애플/]);
-  await expect(page.locator(".compare svg path[stroke^='var(--s']")).toHaveCount(3);
+  await expect(page.locator(".compare svg g[stroke^='var(--s']")).toHaveCount(3);
 
   const colorOf = (name: string) => picks.filter({ hasText: name }).locator(".key").evaluate((el) => (el as HTMLElement).style.background);
   const appleColor = await colorOf("애플");

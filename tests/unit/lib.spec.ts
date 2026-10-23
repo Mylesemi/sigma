@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { dropSpikes } from "../../lib/quotes";
+import { dropSpikes, regularSessionTest } from "../../lib/quotes";
+import { fromYahoo, hasHangul, naverToYahoo } from "../../lib/search";
+import { isValidSymbol } from "../../lib/symbols";
 import { buildSegments, segmentQuery } from "../../lib/ranges";
 import { DEFAULT_PICKS, DEFAULT_STATE, MAX_PICKS, parseUrlState, toSearch } from "../../lib/urlState";
 
@@ -21,7 +23,7 @@ test.describe("urlState", () => {
   });
 
   test("잘못된 값은 기본값으로 정리", () => {
-    const s = parseUrlState("?cat=bogus&range=5y&view=table&seg=-3&picks=AAPL,NOPE,AAPL");
+    const s = parseUrlState("?cat=bogus&range=5y&view=table&seg=-3&picks=AAPL,no%20pe!,AAPL");
     expect(s).toEqual({ ...DEFAULT_STATE, picks: ["AAPL"] });
   });
 
@@ -88,5 +90,65 @@ test.describe("dropSpikes", () => {
   test("실제 급등락(두 배 이내)은 유지", () => {
     const closes = [100, 120, 150, 190, 180, 200, 210];
     expect(dropSpikes(closes.map((_, i) => i), closes)).toHaveLength(closes.length);
+  });
+});
+
+test.describe("search", () => {
+  test("네이버 종목 → Yahoo 티커 (한국·미국·일본만)", () => {
+    expect(naverToYahoo({ code: "005930", name: "삼성전자", typeCode: "KOSPI", nationCode: "KOR", category: "stock" })?.symbol).toBe("005930.KS");
+    expect(naverToYahoo({ code: "293490", name: "카카오게임즈", typeCode: "KOSDAQ", nationCode: "KOR" })?.symbol).toBe("293490.KQ");
+    expect(naverToYahoo({ code: "BRK.B", name: "버크셔", typeCode: "NYSE", nationCode: "USA" })?.symbol).toBe("BRK-B");
+    expect(naverToYahoo({ code: "7203", name: "토요타", typeCode: "TOKYO", nationCode: "JPN" })?.symbol).toBe("7203.T");
+    expect(naverToYahoo({ code: "123456", name: "코넥스", typeCode: "KONEX", nationCode: "KOR" })).toBeNull();
+    expect(naverToYahoo({ code: "0700", name: "텐센트", typeCode: "HONGKONG", nationCode: "HKG" })).toBeNull();
+    expect(naverToYahoo({ code: "KOSPI", name: "코스피", category: "index", nationCode: "KOR" })).toBeNull();
+  });
+
+  test("Yahoo 검색은 주식·ETF만", () => {
+    expect(fromYahoo({ symbol: "NVDA", longname: "NVIDIA Corporation", exchDisp: "나스닥", quoteType: "EQUITY" })).toEqual({
+      symbol: "NVDA",
+      name: "NVIDIA Corporation",
+      exchange: "나스닥",
+    });
+    expect(fromYahoo({ symbol: "000660-USD", quoteType: "CRYPTOCURRENCY" })).toBeNull();
+  });
+
+  test("한글 포함 여부로 검색 경로 결정", () => {
+    expect(hasHangul("엔비디아")).toBe(true);
+    expect(hasHangul("SK하이닉스")).toBe(true);
+    expect(hasHangul("nvidia 000660")).toBe(false);
+  });
+
+  test("티커 형식 검증", () => {
+    for (const ok of ["AAPL", "005930.KS", "BRK-B", "^GSPC", "KRW=X"]) expect(isValidSymbol(ok)).toBe(true);
+    for (const bad of ["", "aapl", "A B", "<script>", "X".repeat(21)]) expect(isValidSymbol(bad)).toBe(false);
+  });
+});
+
+test.describe("regularSessionTest (장외 판정)", () => {
+  const day = (h: number, m = 0) => Date.UTC(2026, 9, 20, h, m) / 1000;
+  const periods = { regular: [[{ start: day(13, 30), end: day(20) }]] };
+
+  test("주식·ETF만 판정, 환율·선물은 null", () => {
+    expect(regularSessionTest({ instrumentType: "CURRENCY", tradingPeriods: periods })).toBeNull();
+    expect(regularSessionTest({ instrumentType: "FUTURE", tradingPeriods: periods })).toBeNull();
+  });
+
+  test("날짜별 정규장: 안·종료 시각·밖", () => {
+    const f = regularSessionTest({ instrumentType: "EQUITY", tradingPeriods: periods })!;
+    expect(f(day(14))).toBe("regular");
+    expect(f(day(20))).toBe("edge"); // 한국장 동시호가 종가처럼 정규장일 수도, 미국 애프터 첫 봉일 수도
+    expect(f(day(9))).toBe("ext");
+    expect(f(day(21))).toBe("ext");
+  });
+
+  test("날짜별 정보가 없으면 오늘 정규장 시각을 매일 적용 (현지 시각 기준)", () => {
+    const f = regularSessionTest({
+      instrumentType: "EQUITY",
+      gmtoffset: -4 * 3600,
+      currentTradingPeriod: { regular: { start: day(13, 30), end: day(20) } },
+    })!;
+    expect(f(day(15) - 3 * 86400)).toBe("regular"); // 3일 전 같은 시각
+    expect(f(day(12))).toBe("ext");
   });
 });

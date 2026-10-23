@@ -10,7 +10,7 @@ const PAD = { top: 12, right: 52, bottom: 26, left: 8 };
 interface Series {
   q: Quote;
   slot: number; // 색상 슬롯: 카테고리 내 심볼 순서로 고정 (숨김·오류와 무관)
-  pts: { t: number; v: number }[]; // v = 기간 시작 대비 등락률(%)
+  pts: { t: number; v: number; ext: boolean }[]; // v = 기간 시작 대비 등락률(%), ext = 장외(프리·애프터마켓)
 }
 
 function fmtPct(v: number) {
@@ -114,21 +114,31 @@ function gapCompressor(times: number[]) {
   return { map, snap, gaps };
 }
 
+// 선 경로를 정규장(실선)·장외(점선) 두 갈래로 나눔. 양 끝 중 하나라도 장외인 구간은 장외로 그림
 // 자산 자신의 장이 닫힌 구간(자기 봉 간격 중앙값의 6배이자 3시간 초과)에서는 선을 끊음
 // → 다른 시장이 거래하는 시간에 이 자산이 움직인 것처럼 직선으로 잇지 않도록
-function linePath(pts: Series["pts"], x: (t: number) => number, y: (v: number) => number) {
+function linePaths(pts: Series["pts"], x: (t: number) => number, y: (v: number) => number) {
   const diffs = pts.slice(1).map((p, i) => p.t - pts[i].t).sort((a, b) => a - b);
   const step = diffs[diffs.length >> 1] ?? 0;
-  return pts
-    .map((p, i) => {
-      const brk = i === 0 || (p.t - pts[i - 1].t > step * 6 && p.t - pts[i - 1].t > 3 * 3600);
-      return `${brk ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`;
-    })
-    .join("");
+  const out = { regular: "", ext: "" };
+  const xy = (p: Series["pts"][number]) => `${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`;
+  let last: "regular" | "ext" | null = null; // 직전 구간이 어느 경로에 이어 그려졌는지
+  for (let i = 1; i < pts.length; i++) {
+    const gap = pts[i].t - pts[i - 1].t;
+    if (gap > step * 6 && gap > 3 * 3600) {
+      last = null;
+      continue;
+    }
+    const kind = pts[i].ext || pts[i - 1].ext ? "ext" : "regular";
+    if (last !== kind) out[kind] += `M${xy(pts[i - 1])}`;
+    out[kind] += `L${xy(pts[i])}`;
+    last = kind;
+  }
+  return out;
 }
 
-// t 시점 직전(포함)의 값 — 거래 시간이 다른 자산도 같은 시각으로 읽기 위함
-function valueAt(pts: Series["pts"], t: number) {
+// t 시점 직전(포함)의 점 — 거래 시간이 다른 자산도 같은 시각으로 읽기 위함
+function pointAt(pts: Series["pts"], t: number) {
   if (!pts.length || t < pts[0].t) return null;
   let lo = 0;
   let hi = pts.length - 1;
@@ -137,7 +147,7 @@ function valueAt(pts: Series["pts"], t: number) {
     if (pts[mid].t <= t) lo = mid;
     else hi = mid - 1;
   }
-  return pts[lo].v;
+  return pts[lo];
 }
 
 // 데이터가 실제로 덮는 시간 길이로 축 눈금 단위를 정함 (하위 구간 확대 시에도 맞도록)
@@ -179,7 +189,9 @@ export default function CompareChart({ quotes, slots, resetKey }: Props) {
         // 시각이 없거나 길이가 어긋난 데이터(예: 이전 버전 API 응답)는 그리지 않음
         const ok = !q.error && !!base && times.length === spark.length;
         const pts = ok
-          ? spark.map((v, i) => ({ t: times[i], v: (v / base - 1) * 100 })).filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v))
+          ? spark
+              .map((v, i) => ({ t: times[i], v: (v / base - 1) * 100, ext: q.ext?.[i] === 1 }))
+              .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v))
           : [];
         return { q, slot, pts };
       }),
@@ -248,9 +260,12 @@ export default function CompareChart({ quotes, slots, resetKey }: Props) {
     hoverT == null
       ? []
       : visible
-          .map((s) => ({ s, v: valueAt(s.pts, hoverT) }))
-          .filter((r): r is { s: Series; v: number } => r.v != null)
+          .flatMap((s) => {
+            const p = pointAt(s.pts, hoverT);
+            return p ? [{ s, v: p.v, ext: p.ext }] : [];
+          })
           .sort((a, b) => b.v - a.v);
+  const anyExt = visible.some((s) => s.pts.some((p) => p.ext));
   const tipLeft = hoverT == null ? 0 : x(hoverT);
 
   return (
@@ -278,6 +293,12 @@ export default function CompareChart({ quotes, slots, resetKey }: Props) {
             </li>
           );
         })}
+        {anyExt && (
+          <li className="legend-note">
+            <span className="ext-key" aria-hidden />
+            장외(프리·애프터마켓)
+          </li>
+        )}
       </ul>
 
       <div ref={wrap} className="compare-plot">
@@ -322,16 +343,15 @@ export default function CompareChart({ quotes, slots, resetKey }: Props) {
               </line>
             ))}
 
-            {visible.map((s) => (
-              <path
-                key={s.q.symbol}
-                d={linePath(s.pts, x, y)}
-                fill="none"
-                stroke={`var(--s${s.slot + 1})`}
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-            ))}
+            {visible.map((s) => {
+              const d = linePaths(s.pts, x, y);
+              return (
+                <g key={s.q.symbol} stroke={`var(--s${s.slot + 1})`} fill="none" strokeWidth="2" strokeLinejoin="round">
+                  {d.regular && <path d={d.regular} />}
+                  {d.ext && <path d={d.ext} className="ext-line" />}
+                </g>
+              );
+            })}
 
             {hoverT != null && (
               <g>
@@ -360,11 +380,12 @@ export default function CompareChart({ quotes, slots, resetKey }: Props) {
         {hoverT != null && tipRows.length > 0 && (
           <div className={`compare-tip ${tipLeft > width / 2 ? "left" : ""}`} style={{ left: tipLeft }}>
             <div className="tip-time">{fmtTipTime(hoverT, range)}</div>
-            {tipRows.map(({ s, v }) => (
+            {tipRows.map(({ s, v, ext }) => (
               <div key={s.q.symbol} className="tip-row">
                 <span className="key" style={{ background: `var(--s${s.slot + 1})` }} />
                 <b>{fmtPct(v)}</b>
                 <span>{s.q.name}</span>
+                {ext && <em className="ext-tag">장외</em>}
               </div>
             ))}
           </div>

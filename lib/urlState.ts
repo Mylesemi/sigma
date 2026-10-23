@@ -1,5 +1,5 @@
 import { RANGES, type RangeKey } from "./ranges";
-import { CATEGORIES, SYMBOLS, type Category } from "./symbols";
+import { CATEGORIES, isValidSymbol, type Category } from "./symbols";
 
 export type Filter = Category | "all" | "custom"; // custom = 직접 고른 자산 비교
 export type View = "cards" | "compare";
@@ -27,7 +27,7 @@ export function parseUrlState(search: string): UrlState {
   const range = p.get("range");
   const seg = Number(p.get("seg"));
   const picks = p.has("picks")
-    ? [...new Set((p.get("picks") ?? "").split(",").filter((s) => SYMBOLS.some((d) => d.symbol === s)))].slice(0, MAX_PICKS)
+    ? [...new Set((p.get("picks") ?? "").split(",").filter(isValidSymbol))].slice(0, MAX_PICKS) // 웹에서 추가한 종목도 허용
     : DEFAULT_PICKS;
   return {
     filter: filter && FILTERS.includes(filter) ? (filter as Filter) : DEFAULT_STATE.filter,

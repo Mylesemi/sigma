@@ -1,5 +1,7 @@
 import { getQuotes, type QuoteWindow } from "@/lib/quotes";
 import { getRange, segmentQuery } from "@/lib/ranges";
+import { MAX_CUSTOM, isValidSymbol } from "@/lib/symbols";
+import { MAX_PICKS } from "@/lib/urlState";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +18,17 @@ function parseWindow(params: URLSearchParams): QuoteWindow | null {
   return { from, to: Math.min(to, now) };
 }
 
+// ?extra=NVDA,000660.KS — 사용자가 추가한 종목 (형식이 틀린 값은 버리고, 정렬해 CDN 캐시 키를 맞춤)
+function parseExtra(params: URLSearchParams): string[] {
+  const list = (params.get("extra") ?? "").split(",").map((s) => s.trim().toUpperCase());
+  return [...new Set(list.filter(isValidSymbol))].sort().slice(0, MAX_CUSTOM + MAX_PICKS); // 추가 종목 + 공유 링크의 직접 비교 종목
+}
+
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
   const range = getRange(params.get("range"));
   const win = range.segment ? parseWindow(params) : null;
-  const data = await getQuotes(range, win);
+  const data = await getQuotes(range, win, parseExtra(params));
   const cacheSec = win ? segmentQuery(win.from, win.to).cacheSec : range.cacheSec;
   return Response.json(data, {
     headers: {

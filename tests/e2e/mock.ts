@@ -17,12 +17,27 @@ export async function mockQuotes(page: Page, opts: MockOptions = {}) {
     const range = getRange(url.searchParams.get("range")).key;
     const from = Number(url.searchParams.get("from"));
     const to = Number(url.searchParams.get("to"));
-    const res = makeQuotes(range, from && to ? { from, to } : null);
+    const extra = (url.searchParams.get("extra") ?? "").split(",").filter(Boolean);
+    const res = makeQuotes(range, from && to ? { from, to } : null, extra);
     const delay = opts.delayMs?.(range) ?? 0;
     if (delay) await new Promise((r) => setTimeout(r, delay));
     await route.fulfill({ json: opts.transform ? opts.transform(res) : res });
   });
   return requests;
+}
+
+// /api/search 모킹 — 검색어가 들어간 가짜 결과 (한글이면 한국 종목처럼)
+export async function mockSearch(page: Page) {
+  await page.route("**/api/search**", async (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q") ?? "";
+    const results = /[가-힣]/.test(q)
+      ? [{ symbol: "000660.KS", name: `SK${q}`, exchange: "코스피" }]
+      : [
+          { symbol: "NVDA", name: "NVIDIA Corporation", exchange: "나스닥" },
+          { symbol: "AAPL", name: "Apple Inc.", exchange: "나스닥" }, // 이미 기본 목록에 있는 종목
+        ];
+    await route.fulfill({ json: { results } });
+  });
 }
 
 // 모든 E2E 테스트 공통: 콘솔 오류·페이지 예외가 하나라도 생기면 실패
