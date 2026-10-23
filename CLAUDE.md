@@ -26,6 +26,7 @@ lint · 테스트 스크립트는 설정되어 있지 않다.
 - **`lib/quotes.ts`** — 서버 전용. 심볼마다 Yahoo Finance chart API(`v8/finance/chart`, API 키 불필요)를 병렬 호출해 `Quote`로 정규화한다. 1일은 `range=1d`, 그 외 기간은 `period1/period2`를 쓴다(Yahoo의 `range`는 `3y`를 지원하지 않음). 등락 기준은 기간 시작 직전 종가인 `chartPreviousClose`, `high`/`low`는 1일이면 당일 고저, 그 외에는 기간 내 고저다. 개별 심볼 실패는 throw하지 않고 `error` 필드가 채워진 빈 `Quote`로 반환 → 일부 실패해도 응답 전체는 성공한다. 장기 기간 데이터가 없는 심볼(예: `CNYKRW=X`)도 `error`로 처리한다.
 - **`app/api/quotes/route.ts`** — `force-dynamic` 라우트지만 기간별 `cacheSec`로 `s-maxage`를 걸어 Vercel CDN이 캐시한다.
 - **`components/Dashboard.tsx`** — 선택한 기간으로 `/api/quotes`를 30초마다 폴링(탭이 보일 때만, 탭 복귀 시 즉시 갱신). 상단 티커 스트립은 하드코딩된 `TICKER` 배열의 심볼을 `SYMBOLS`에서 찾아 표시하므로, 심볼을 삭제·변경할 때 여기도 맞춰야 한다. 카테고리 필터, 기간 선택, 로딩 스켈레톤 포함(기간 전환 중에는 응답의 `range`가 일치할 때까지 스켈레톤).
+- **`components/CompareChart.tsx`** — "비교" 보기. 카테고리별로 모든 자산을 기간 시작 대비 등락률(%)로 정규화해 한 그래프·한 y축에 겹쳐 그린다. x축은 실제 시각(`Quote.times`)이라 거래 시간이 다른 시장은 서로 다른 구간에 그려지고, 툴팁은 각 자산의 해당 시각 직전 값을 보여준다. 계열 색은 `--s1`~`--s8`(globals.css, 색각이상 대비 검증된 고정 순서)이며 카테고리 내 심볼 순서로 고정된다 — 숨김/오류로 다시 칠하지 않는다. 한 카테고리 심볼은 8개를 넘기지 않는다.
 - **`components/QuoteCard.tsx`** — 가격 변동 시 flash 애니메이션, `digits`로 숫자 포맷(`ko-KR`). **`Sparkline.tsx`** — 전일 종가 기준선을 포함한 인라인 SVG.
 
 ## 규칙

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { QuotesResponse } from "@/lib/quotes";
 import { RANGES, type RangeKey } from "@/lib/ranges";
 import { CATEGORIES, type Category } from "@/lib/symbols";
+import CompareChart from "./CompareChart";
 import QuoteCard from "./QuoteCard";
 
 const REFRESH_MS = 30_000;
@@ -15,6 +16,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Category | "all">("all");
   const [range, setRange] = useState<RangeKey>("1d");
+  const [view, setView] = useState<"cards" | "compare">("cards");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,6 +100,14 @@ export default function Dashboard() {
             {c.title}
           </button>
         ))}
+        <div className="periods" role="group" aria-label="보기">
+          <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")}>
+            카드
+          </button>
+          <button className={view === "compare" ? "active" : ""} onClick={() => setView("compare")}>
+            비교
+          </button>
+        </div>
         <div className="periods" role="group" aria-label="기간">
           {RANGES.map((r) => (
             <button key={r.key} className={range === r.key ? "active" : ""} onClick={() => setRange(r.key)}>
@@ -111,11 +121,19 @@ export default function Dashboard() {
         {sections.map((c) => (
           <section key={c.key}>
             <h2>{c.title}</h2>
-            <div className="grid">
-              {current
-                ? quotes.filter((q) => q.category === c.key).map((q) => <QuoteCard key={q.symbol} q={q} />)
-                : Array.from({ length: 4 }, (_, i) => <div key={i} className="card skeleton" />)}
-            </div>
+            {view === "compare" ? (
+              current ? (
+                <CompareChart quotes={quotes.filter((q) => q.category === c.key)} range={range} />
+              ) : (
+                <div className="compare skeleton" />
+              )
+            ) : (
+              <div className="grid">
+                {current
+                  ? quotes.filter((q) => q.category === c.key).map((q) => <QuoteCard key={q.symbol} q={q} />)
+                  : Array.from({ length: 4 }, (_, i) => <div key={i} className="card skeleton" />)}
+              </div>
+            )}
           </section>
         ))}
       </main>

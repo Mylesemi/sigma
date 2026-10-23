@@ -10,6 +10,7 @@ export interface Quote extends SymbolDef {
   low: number | null; // 기간 저가
   marketTime: number | null; // unix seconds
   spark: number[];
+  times: number[]; // spark와 같은 길이의 unix seconds
   error?: string;
 }
 
@@ -41,6 +42,7 @@ async function fetchQuote(def: SymbolDef, range: RangeDef): Promise<Quote> {
     low: null,
     marketTime: null,
     spark: [],
+    times: [],
   };
 
   try {
@@ -63,7 +65,11 @@ async function fetchQuote(def: SymbolDef, range: RangeDef): Promise<Quote> {
     const changePct = change != null && prevClose ? (change / prevClose) * 100 : null;
 
     const ohlc = result?.indicators?.quote?.[0];
-    const spark = nums(ohlc?.close);
+    const ts: number[] = result?.timestamp ?? [];
+    const closes: (number | null)[] = ohlc?.close ?? [];
+    const valid = closes.flatMap((v, i) => (typeof v === "number" && ts[i] != null ? [i] : []));
+    const spark = valid.map((i) => closes[i] as number);
+    const times = valid.map((i) => ts[i]);
     const highs = nums(ohlc?.high);
     const lows = nums(ohlc?.low);
     const isDay = range.key === "1d";
@@ -80,6 +86,7 @@ async function fetchQuote(def: SymbolDef, range: RangeDef): Promise<Quote> {
       low: (isDay ? meta.regularMarketDayLow : null) ?? (lows.length ? Math.min(...lows) : null),
       marketTime: meta.regularMarketTime ?? null,
       spark,
+      times,
     };
   } catch (e) {
     return { ...empty, error: e instanceof Error ? e.message : "fetch failed" };
