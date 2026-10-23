@@ -4,7 +4,8 @@
 
 - Next.js (App Router) + TypeScript, 외부 UI 라이브러리 없음
 - 데이터: Yahoo Finance 차트 API (API 키 불필요), `/api/quotes`에서 서버 측 조회
-- Vercel CDN 30초 캐시 (`s-maxage=30`) + 클라이언트 30초 자동 갱신
+- Vercel CDN 캐시 (1일 30초 ~ 장기 1시간, `lib/ranges.ts`) + 클라이언트 30초 자동 갱신
+- 기간 선택: 1일 · 1주 · 1년 · 3년 · 10년 (등락은 기간 시작 대비)
 - 한국식 색상 표기 (상승 빨강 / 하락 파랑), 다크 모드 · 모바일 대응
 
 ## 로컬 실행

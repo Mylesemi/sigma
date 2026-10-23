@@ -65,8 +65,8 @@ export default function QuoteCard({ q }: { q: Quote }) {
       <Sparkline data={q.spark} baseline={q.prevClose} up={dir !== "down"} />
 
       <footer className="range">
-        <span>저 {fmt(q.dayLow, q.digits)}</span>
-        <span>고 {fmt(q.dayHigh, q.digits)}</span>
+        <span>저 {fmt(q.low, q.digits)}</span>
+        <span>고 {fmt(q.high, q.digits)}</span>
       </footer>
     </article>
   );

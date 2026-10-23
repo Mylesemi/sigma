@@ -123,6 +123,19 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .filters button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 
+/* 기간 선택 (세그먼트) */
+.periods {
+  flex: none;
+  display: flex;
+  margin-left: auto;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.filters .periods button { border: none; background: none; padding: 4px 12px; }
+.filters .periods button.active { background: var(--accent); color: #fff; }
+
 main { max-width: 1400px; margin: 0 auto; padding: 8px 24px 24px; }
 section h2 { font-size: 16px; margin: 24px 0 12px; color: var(--muted); font-weight: 600; }
 

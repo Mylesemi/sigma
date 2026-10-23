@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { QuotesResponse } from "@/lib/quotes";
+import { RANGES, type RangeKey } from "@/lib/ranges";
 import { CATEGORIES, type Category } from "@/lib/symbols";
 import QuoteCard from "./QuoteCard";
 
@@ -13,11 +14,12 @@ export default function Dashboard() {
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Category | "all">("all");
+  const [range, setRange] = useState<RangeKey>("1d");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/quotes");
+      const res = await fetch(`/api/quotes?range=${range}`);
       if (!res.ok) throw new Error(String(res.status));
       setData(await res.json());
       setError(false);
@@ -26,7 +28,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => {
     load();
@@ -41,7 +43,9 @@ export default function Dashboard() {
     };
   }, [load]);
 
-  const quotes = data?.quotes ?? [];
+  // 기간 전환 중에는 이전 기간 데이터 대신 스켈레톤 표시
+  const current = data?.range === range ? data : null;
+  const quotes = current?.quotes ?? [];
   const tickerItems = TICKER.map((s) => quotes.find((q) => q.symbol === s)).filter(Boolean);
   const sections = CATEGORIES.filter((c) => filter === "all" || c.key === filter);
 
@@ -94,6 +98,13 @@ export default function Dashboard() {
             {c.title}
           </button>
         ))}
+        <div className="periods" role="group" aria-label="기간">
+          {RANGES.map((r) => (
+            <button key={r.key} className={range === r.key ? "active" : ""} onClick={() => setRange(r.key)}>
+              {r.label}
+            </button>
+          ))}
+        </div>
       </nav>
 
       <main>
@@ -101,7 +112,7 @@ export default function Dashboard() {
           <section key={c.key}>
             <h2>{c.title}</h2>
             <div className="grid">
-              {data
+              {current
                 ? quotes.filter((q) => q.category === c.key).map((q) => <QuoteCard key={q.symbol} q={q} />)
                 : Array.from({ length: 4 }, (_, i) => <div key={i} className="card skeleton" />)}
             </div>
