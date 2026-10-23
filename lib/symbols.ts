@@ -1,4 +1,4 @@
-export type Category = "fx" | "commodity" | "index" | "macro";
+export type Category = "fx" | "commodity" | "index" | "stock" | "macro";
 
 export interface SymbolDef {
   symbol: string; // Yahoo Finance ticker
@@ -12,6 +12,7 @@ export const CATEGORIES: { key: Category; title: string }[] = [
   { key: "fx", title: "환율" },
   { key: "commodity", title: "원자재" },
   { key: "index", title: "주가지수" },
+  { key: "stock", title: "개별 종목" },
   { key: "macro", title: "금리 · 변동성 · 가상자산" },
 ];
 
@@ -41,6 +42,12 @@ export const SYMBOLS: SymbolDef[] = [
   { symbol: "^DJI", name: "다우존스", sub: "Dow Jones", category: "index", digits: 2 },
   { symbol: "^N225", name: "닛케이 225", sub: "일본", category: "index", digits: 2 },
   { symbol: "000001.SS", name: "상해종합", sub: "중국", category: "index", digits: 2 },
+  { symbol: "^JKSE", name: "자카르타종합", sub: "인도네시아 IDX", category: "index", digits: 2 },
+
+  // 개별 종목
+  { symbol: "005930.KS", name: "삼성전자", sub: "005930 · KRW", category: "stock", digits: 0 },
+  { symbol: "AAPL", name: "애플", sub: "AAPL · USD", category: "stock", digits: 2 },
+  { symbol: "TSLA", name: "테슬라", sub: "TSLA · USD", category: "stock", digits: 2 },
 
   // 금리 · 변동성 · 가상자산
   { symbol: "^TNX", name: "미 10년물", sub: "US 10Y 국채금리 (%)", category: "macro", digits: 3 },

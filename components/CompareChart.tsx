@@ -112,6 +112,19 @@ function gapCompressor(times: number[]) {
   return { map, snap, gaps };
 }
 
+// 자산 자신의 장이 닫힌 구간(자기 봉 간격 중앙값의 6배이자 3시간 초과)에서는 선을 끊음
+// → 다른 시장이 거래하는 시간에 이 자산이 움직인 것처럼 직선으로 잇지 않도록
+function linePath(pts: Series["pts"], x: (t: number) => number, y: (v: number) => number) {
+  const diffs = pts.slice(1).map((p, i) => p.t - pts[i].t).sort((a, b) => a - b);
+  const step = diffs[diffs.length >> 1] ?? 0;
+  return pts
+    .map((p, i) => {
+      const brk = i === 0 || (p.t - pts[i - 1].t > step * 6 && p.t - pts[i - 1].t > 3 * 3600);
+      return `${brk ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`;
+    })
+    .join("");
+}
+
 // t 시점 직전(포함)의 값 — 거래 시간이 다른 자산도 같은 시각으로 읽기 위함
 function valueAt(pts: Series["pts"], t: number) {
   if (!pts.length || t < pts[0].t) return null;
@@ -293,7 +306,8 @@ export default function CompareChart({ quotes, resetKey }: { quotes: Quote[]; re
               </text>
             ))}
 
-            {gap.gaps.map((g) => (
+            {/* 접힌 지점 표시는 몇 개 안 될 때만 (일봉처럼 매 주말이 접히면 점선이 너무 촘촘해짐) */}
+            {gap.gaps.length <= 3 && gap.gaps.map((g) => (
               <line key={g.start} x1={x(g.end)} x2={x(g.end)} y1={PAD.top} y2={PAD.top + plotH} className="gap-mark">
                 <title>데이터 없는 구간(주말·휴장) 생략</title>
               </line>
@@ -302,7 +316,7 @@ export default function CompareChart({ quotes, resetKey }: { quotes: Quote[]; re
             {visible.map((s) => (
               <path
                 key={s.q.symbol}
-                d={s.pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("")}
+                d={linePath(s.pts, x, y)}
                 fill="none"
                 stroke={`var(--s${s.slot + 1})`}
                 strokeWidth="2"

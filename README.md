@@ -1,6 +1,6 @@
 # SIGMA
 
-**S**ignals & **I**ndicators for **G**lobal **M**arket **A**nalysis — 환율 · 원자재 · 주가지수 · 금리 등 주요 시장 지표를 한눈에 보는 실시간 대시보드.
+**S**ignals & **I**ndicators for **G**lobal **M**arket **A**nalysis — 환율 · 원자재 · 주가지수 · 개별 종목 · 금리 등 주요 시장 지표를 한눈에 보는 실시간 대시보드.
 
 - Next.js (App Router) + TypeScript, 외부 UI 라이브러리 없음
 - 데이터: Yahoo Finance 차트 API (API 키 불필요), `/api/quotes`에서 서버 측 조회
@@ -20,7 +20,7 @@ npm run dev   # http://localhost:3000
 
 ## 지표 추가/변경
 
-`lib/symbols.ts`의 `SYMBOLS` 배열에 Yahoo Finance 티커를 추가하면 됩니다.
+`lib/symbols.ts`의 `SYMBOLS` 배열에 Yahoo Finance 티커를 추가하면 됩니다 (예: 삼성전자 `005930.KS`, 애플 `AAPL`). 비교 차트 색상이 8개라 한 카테고리에는 8개까지 넣을 수 있습니다.
 
 ## 배포
 
