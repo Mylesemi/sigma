@@ -175,6 +175,28 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .segment-chips { position: relative; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
 .segment-chips::-webkit-scrollbar { display: none; }
 
+/* 직접 비교 자산 선택 */
+.picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; font-size: 13px; }
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.pick button { border: none; background: none; padding: 0 6px; font-size: 15px; line-height: 1; color: var(--muted); }
+.pick button:hover { color: var(--text); }
+.picks select {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--border);
+  background: var(--surface);
+  font: inherit;
+  color: inherit;
+}
+
 main.stale { opacity: 0.5; transition: opacity 0.2s; pointer-events: none; }
 section h2 small { margin-left: 8px; font-size: 12px; font-weight: 500; }
 

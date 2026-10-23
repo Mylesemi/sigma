@@ -14,11 +14,13 @@ interface Series {
 }
 
 function fmtPct(v: number) {
+  v = v === 0 ? 0 : v; // -0 → 0 ("-0%" 방지)
   const digits = Math.abs(v) >= 100 ? 0 : 2;
   return `${v > 0 ? "+" : ""}${v.toLocaleString("ko-KR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
 }
 
 function fmtTick(v: number) {
+  v = Math.abs(v) < 1e-9 ? 0 : v; // -0·부동소수 오차 → 0 ("-0%" 방지)
   return `${v > 0 ? "+" : ""}${v.toLocaleString("ko-KR", { maximumFractionDigits: Math.abs(v) >= 10 ? 0 : 2 })}%`;
 }
 
@@ -144,7 +146,13 @@ function scaleFor(span: number): RangeKey {
   return span <= 2 * day ? "1d" : span <= 10 * day ? "1w" : span <= 400 * day ? "1y" : "3y";
 }
 
-export default function CompareChart({ quotes, resetKey }: { quotes: Quote[]; resetKey: string }) {
+interface Props {
+  quotes: Quote[];
+  slots?: number[]; // 색상 슬롯 (생략하면 목록 순서 — 카테고리 내 심볼 순서)
+  resetKey: string;
+}
+
+export default function CompareChart({ quotes, slots, resetKey }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -163,7 +171,8 @@ export default function CompareChart({ quotes, resetKey }: { quotes: Quote[]; re
 
   const series: Series[] = useMemo(
     () =>
-      quotes.map((q, slot) => {
+      quotes.map((q, i) => {
+        const slot = slots?.[i] ?? i;
         const spark = q.spark ?? [];
         const times = q.times ?? [];
         const base = q.prevClose ?? spark[0];
@@ -174,7 +183,7 @@ export default function CompareChart({ quotes, resetKey }: { quotes: Quote[]; re
           : [];
         return { q, slot, pts };
       }),
-    [quotes],
+    [quotes, slots],
   );
 
   const visible = series.filter((s) => s.pts.length > 1 && !hidden.has(s.q.symbol));

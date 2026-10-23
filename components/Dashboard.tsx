@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { QuotesResponse } from "@/lib/quotes";
+import type { Quote, QuotesResponse } from "@/lib/quotes";
 import { RANGES, buildSegments, getRange, type RangeKey, type Segment } from "@/lib/ranges";
-import { CATEGORIES, type Category } from "@/lib/symbols";
+import { CATEGORIES } from "@/lib/symbols";
+import { DEFAULT_STATE, MAX_PICKS, parseUrlState, toSearch, type Filter, type View } from "@/lib/urlState";
 import CompareChart from "./CompareChart";
 import ErrorBoundary from "./ErrorBoundary";
+import PickList from "./PickList";
 import QuoteCard from "./QuoteCard";
 import SegmentPicker from "./SegmentPicker";
 
@@ -15,25 +17,92 @@ const TICKER = ["KRW=X", "^KS11", "^GSPC", "^IXIC", "GC=F", "CL=F", "^TNX", "BTC
 // 요청/응답이 같은 화면(기간 + 하위 구간)에 해당하는지 비교하는 키
 const viewKey = (range: RangeKey, from?: number | null) => (from ? `${range}:${from}` : range);
 
+// 직접 비교 자산 — 색상 슬롯을 추가 시점에 고정해, 다른 자산을 빼도 남은 자산의 색이 바뀌지 않게 함
+interface Pick {
+  symbol: string;
+  slot: number;
+}
+const toPicks = (symbols: string[]): Pick[] => symbols.map((symbol, slot) => ({ symbol, slot }));
+
+// URL의 구간 시작 시각 → 해당 기간의 구간 (기간에 맞지 않으면 null)
+function segmentFrom(range: RangeKey, from: number | null): Segment | null {
+  const unit = getRange(range).segment;
+  return unit && from ? (buildSegments(unit, [from])[0] ?? null) : null;
+}
+
+interface Section {
+  key: string;
+  title: string;
+  quotes: Quote[];
+  slots?: number[];
+}
+
 export default function Dashboard() {
+  const [ready, setReady] = useState(false); // URL에서 초기 상태를 읽은 뒤에만 조회
   const [data, setData] = useState<QuotesResponse | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<Category | "all">("all");
-  const [range, setRange] = useState<RangeKey>("1d");
-  const [view, setView] = useState<"cards" | "compare">("cards");
-  const [segments, setSegments] = useState<Segment[]>([]);
+  const [filter, setFilter] = useState<Filter>(DEFAULT_STATE.filter);
+  const [range, setRange] = useState<RangeKey>(DEFAULT_STATE.range);
+  const [view, setView] = useState<View>(DEFAULT_STATE.view);
+  const [picks, setPicks] = useState<Pick[]>(toPicks(DEFAULT_STATE.picks));
+  // 하위 구간 목록은 어느 기간의 것인지와 함께 보관 (다른 기간 목록이 잠깐이라도 보이지 않게)
+  const [segInfo, setSegInfo] = useState<{ range: RangeKey; list: Segment[] }>({ range: DEFAULT_STATE.range, list: [] });
+  const segments = segInfo.range === range ? segInfo.list : [];
   const [seg, setSeg] = useState<Segment | null>(null); // 확대해서 보는 하위 구간 (null = 기간 전체)
   const wantKey = viewKey(range, seg?.from);
   const wantRef = useRef(wantKey);
   wantRef.current = wantKey;
+  const segInfoRef = useRef(segInfo);
+  segInfoRef.current = segInfo;
+  // 첫 진입 시 주소 정리(잘못된 값 제거 등)는 방문 기록에 새로 쌓지 않음
+  // (뒤로/앞으로 가기 후에는 상태가 곧 그 주소라 다시 쓸 일이 없음)
+  const fromUrl = useRef(false);
+
+  // URL → 상태 (첫 진입, 뒤로/앞으로 가기)
+  useEffect(() => {
+    const apply = (initial: boolean) => {
+      const s = parseUrlState(window.location.search);
+      setFilter(s.filter);
+      setRange(s.range);
+      setView(s.view);
+      setPicks(toPicks(s.picks));
+      setSeg(segmentFrom(s.range, s.seg));
+      if (initial) fromUrl.current = true;
+      setReady(true);
+    };
+    apply(true);
+    const onPop = () => apply(false);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // 상태 → URL (사용자가 바꿀 때마다 기록해 뒤로 가기로 되돌릴 수 있게)
+  useEffect(() => {
+    if (!ready) return;
+    const search = toSearch({ filter, range, view, seg: seg?.from ?? null, picks: picks.map((p) => p.symbol) });
+    const replace = fromUrl.current;
+    fromUrl.current = false;
+    if (search === window.location.search) return;
+    const url = `${window.location.pathname}${search}`;
+    if (replace) window.history.replaceState(null, "", url);
+    else window.history.pushState(null, "", url);
+  }, [ready, filter, range, view, seg, picks]);
 
   const changeRange = (key: RangeKey) => {
     if (key === range) return;
     setRange(key);
     setSeg(null);
-    setSegments([]);
   };
+
+  const addPick = (symbol: string) =>
+    setPicks((prev) => {
+      if (prev.length >= MAX_PICKS || prev.some((p) => p.symbol === symbol)) return prev;
+      const used = new Set(prev.map((p) => p.slot));
+      const slot = Array.from({ length: MAX_PICKS }, (_, i) => i).find((i) => !used.has(i)) ?? prev.length;
+      return [...prev, { symbol, slot }];
+    });
+  const removePick = (symbol: string) => setPicks((prev) => prev.filter((p) => p.symbol !== symbol));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,7 +116,15 @@ export default function Dashboard() {
       if (viewKey(json.range, json.window?.from) !== wantRef.current) return;
       setData(json);
       const unit = getRange(json.range).segment;
-      if (!json.window && unit) setSegments(buildSegments(unit, json.quotes.flatMap((q) => (q.error ? [] : (q.times ?? [])))));
+      const toSegments = (r: QuotesResponse) => buildSegments(unit!, r.quotes.flatMap((q) => (q.error ? [] : (q.times ?? []))));
+      if (unit && !json.window) setSegInfo({ range: json.range, list: toSegments(json) });
+      else if (unit && segInfoRef.current.range !== json.range) {
+        // 구간이 담긴 링크로 바로 들어온 경우: 구간 목록을 만들려고 전체 기간을 한 번 더 조회
+        fetch(`/api/quotes?range=${json.range}`, { cache: "no-store" })
+          .then((r) => r.json())
+          .then((full: QuotesResponse) => setSegInfo({ range: full.range, list: toSegments(full) }))
+          .catch(() => {});
+      }
       setError(false);
     } catch {
       setError(true);
@@ -57,6 +134,7 @@ export default function Dashboard() {
   }, [range, seg]);
 
   useEffect(() => {
+    if (!ready) return;
     load();
     // 이미 끝난 과거 구간은 값이 바뀌지 않으므로 자동 갱신하지 않음
     const settled = seg != null && seg.to < Date.now() / 1000 - 86400;
@@ -69,12 +147,12 @@ export default function Dashboard() {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [load, seg]);
+  }, [ready, load, seg]);
 
   // 기간 전환 중에는 이전 데이터를 흐리게 유지 (화면이 깜빡이지 않도록)
   const stale = data != null && viewKey(data.range, data.window?.from) !== wantKey;
   const shownRange = getRange(data?.range ?? range);
-  const shownSeg = data?.window ? segments.find((s) => s.from === data.window!.from) : undefined;
+  const shownSeg = data?.window ? (segments.find((s) => s.from === data.window!.from) ?? seg) : undefined;
   const baseLabel = data?.window
     ? `${shownSeg?.label ?? "선택 구간"} 시작 대비`
     : shownRange.key === "1d"
@@ -82,7 +160,15 @@ export default function Dashboard() {
       : `${shownRange.label} 전 대비`;
   const quotes = data?.quotes ?? [];
   const tickerItems = TICKER.map((s) => quotes.find((q) => q.symbol === s)).filter(Boolean);
-  const sections = CATEGORIES.filter((c) => filter === "all" || c.key === filter);
+  const pickedQuotes = picks.flatMap((p) => quotes.filter((q) => q.symbol === p.symbol));
+  const sections: Section[] =
+    filter === "custom"
+      ? [{ key: "custom", title: "직접 비교", quotes: pickedQuotes, slots: picks.filter((p) => quotes.some((q) => q.symbol === p.symbol)).map((p) => p.slot) }]
+      : CATEGORIES.filter((c) => filter === "all" || c.key === filter).map((c) => ({
+          key: c.key,
+          title: c.title,
+          quotes: quotes.filter((q) => q.category === c.key),
+        }));
 
   return (
     <>
@@ -134,6 +220,9 @@ export default function Dashboard() {
               {c.title}
             </button>
           ))}
+          <button className={filter === "custom" ? "active" : ""} onClick={() => setFilter("custom")}>
+            직접 비교
+          </button>
         </nav>
         <div className="controls">
           <div className="seg" role="group" aria-label="보기">
@@ -165,15 +254,17 @@ export default function Dashboard() {
               {c.title}
               {data && <small>{baseLabel}</small>}
             </h2>
-            {view === "compare" ? (
+            {c.key === "custom" && (
+              <PickList picks={picks.map((p) => p.symbol)} slots={picks.map((p) => p.slot)} onAdd={addPick} onRemove={removePick} />
+            )}
+            {c.key === "custom" && picks.length === 0 ? (
+              <div className="compare compare-empty">비교할 자산을 추가하세요.</div>
+            ) : view === "compare" ? (
               data ? (
                 <ErrorBoundary
                   resetKey={data.updatedAt}
                   fallback={<div className="compare compare-empty">차트를 표시할 수 없습니다. 카드 보기를 이용해 주세요.</div>}>
-                  <CompareChart
-                    quotes={quotes.filter((q) => q.category === c.key)}
-                    resetKey={viewKey(data.range, data.window?.from)}
-                  />
+                  <CompareChart quotes={c.quotes} slots={c.slots} resetKey={viewKey(data.range, data.window?.from)} />
                 </ErrorBoundary>
               ) : (
                 <div className="compare skeleton" />
@@ -181,7 +272,7 @@ export default function Dashboard() {
             ) : (
               <div className="grid">
                 {data
-                  ? quotes.filter((q) => q.category === c.key).map((q) => <QuoteCard key={q.symbol} q={q} />)
+                  ? c.quotes.map((q) => <QuoteCard key={q.symbol} q={q} />)
                   : Array.from({ length: 4 }, (_, i) => <div key={i} className="card skeleton" />)}
               </div>
             )}

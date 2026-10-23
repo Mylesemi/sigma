@@ -45,7 +45,7 @@ function median(xs: number[]) {
 
 // Yahoo 장기 데이터에는 가끔 자릿수가 틀린 값(예: USD/KRW 0.1154)이 섞여 있음
 // → 앞뒤 이웃 중앙값과 비교해 크게 벗어난 점은 제외
-function dropSpikes(idx: number[], closes: (number | null)[]) {
+export function dropSpikes(idx: number[], closes: (number | null)[]) {
   return idx.filter((i, k) => {
     const neighbors = [...idx.slice(Math.max(0, k - 3), k), ...idx.slice(k + 1, k + 4)].map((j) => closes[j] as number);
     if (neighbors.length < 2) return true;
