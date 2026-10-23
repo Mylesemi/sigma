@@ -109,15 +109,23 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .down { color: var(--down); }
 .flat { color: var(--muted); }
 
-/* 필터 */
-.filters {
+/* 필터 · 보기 · 기간 */
+.toolbar {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
   padding: 20px 24px 0;
-  overflow-x: auto;
   max-width: 1400px;
   margin: 0 auto;
 }
+.filters {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filters::-webkit-scrollbar { display: none; }
 .filters button {
   flex: none;
   padding: 7px 14px;
@@ -128,22 +136,51 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .filters button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 
-/* 기간 선택 (세그먼트) */
-.periods {
-  flex: none;
+.controls { display: flex; gap: 8px; margin-left: auto; flex: none; }
+.seg {
   display: flex;
-  margin-left: auto;
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
 }
-.filters .periods button { border: none; background: none; padding: 4px 12px; }
-.filters .periods button.active { background: var(--accent); color: #fff; }
-.filters .periods + .periods { margin-left: 0; }
+.seg button { border: none; background: none; padding: 4px 12px; border-radius: 999px; font-size: 14px; }
+.seg button.active { background: var(--accent); color: #fff; }
+
+/* 하위 구간 선택 */
+.segments {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 12px 24px 0;
+  font-size: 13px;
+}
+.segments-label { color: var(--muted); margin-right: 2px; flex: none; }
+.segments button,
+.segments select {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font: inherit;
+  color: inherit;
+}
+.segments select { padding-right: 6px; max-width: 160px; }
+.segments button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.segments button:disabled { opacity: 0.35; cursor: default; }
+.segments .step { padding: 4px 9px; }
+.segment-chips { position: relative; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+.segment-chips::-webkit-scrollbar { display: none; }
+
+main.stale { opacity: 0.5; transition: opacity 0.2s; pointer-events: none; }
+section h2 small { margin-left: 8px; font-size: 12px; font-weight: 500; }
 
 /* 비교 차트 */
 .compare {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -169,6 +206,32 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .key { width: 14px; height: 3px; border-radius: 2px; flex: none; }
 
 .compare-plot { position: relative; min-height: 280px; }
+.scale-note {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.compare-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 280px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.compare-empty button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
 .compare-plot svg { display: block; overflow: visible; }
 .compare .gridline { stroke: var(--border); stroke-width: 1; }
 .compare .axis-zero { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
@@ -248,7 +311,10 @@ section h2 { font-size: 16px; margin: 24px 0 12px; color: var(--muted); font-wei
 
 @media (max-width: 600px) {
   .topbar, .ticker { padding-left: 16px; padding-right: 16px; }
-  .filters { padding: 16px 16px 0; }
+  .toolbar { flex-direction: column; align-items: stretch; padding: 16px 16px 0; gap: 10px; }
+  .controls { margin-left: 0; justify-content: space-between; }
+  .segments { padding: 10px 16px 0; }
+  .seg button { padding: 4px 10px; }
   main { padding: 4px 16px 16px; }
   .foot { padding: 16px; }
   .brand small { display: none; }

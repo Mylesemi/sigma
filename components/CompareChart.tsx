@@ -14,15 +14,48 @@ interface Series {
 }
 
 function fmtPct(v: number) {
-  return `${v > 0 ? "+" : ""}${v.toFixed(2)}%`;
+  const digits = Math.abs(v) >= 100 ? 0 : 2;
+  return `${v > 0 ? "+" : ""}${v.toLocaleString("ko-KR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
+}
+
+function fmtTick(v: number) {
+  return `${v > 0 ? "+" : ""}${v.toLocaleString("ko-KR", { maximumFractionDigits: Math.abs(v) >= 10 ? 0 : 2 })}%`;
 }
 
 function fmtAxisTime(sec: number, range: RangeKey) {
   const d = new Date(sec * 1000);
-  if (range === "1d") return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
-  if (range === "1w") return d.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
-  if (range === "1y") return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "numeric" });
+  if (range === "1d") return `${d.getHours()}시`;
+  if (range === "1w") return `${d.getMonth() + 1}/${d.getDate()}`;
+  if (range === "1y") return d.getMonth() === 0 ? `${d.getFullYear()}년` : `${d.getMonth() + 1}월`;
   return `${d.getFullYear()}`;
+}
+
+// x축 눈금을 달력 경계(정시·자정·월초·연초)에 맞춤 — 같은 라벨이 반복되지 않도록
+function calendarTicks(t0: number, t1: number, range: RangeKey, maxTicks: number) {
+  const unit = range === "1d" ? "hour" : range === "1w" ? "day" : range === "1y" ? "month" : "year";
+  const steps = unit === "hour" ? [1, 2, 3, 6, 12] : unit === "day" ? [1, 2] : unit === "month" ? [1, 2, 3, 6] : [1, 2, 5];
+  const start = new Date(t0 * 1000);
+  if (unit === "hour") start.setMinutes(0, 0, 0);
+  else start.setHours(0, 0, 0, 0);
+  if (unit === "month" || unit === "year") start.setDate(1);
+  if (unit === "year") start.setMonth(0);
+  const all: number[] = [];
+  for (const d = new Date(start); d.getTime() / 1000 <= t1 && all.length < 1000; ) {
+    if (d.getTime() / 1000 >= t0) all.push(d.getTime() / 1000);
+    if (unit === "hour") d.setHours(d.getHours() + 1);
+    else if (unit === "day") d.setDate(d.getDate() + 1);
+    else if (unit === "month") d.setMonth(d.getMonth() + 1);
+    else d.setFullYear(d.getFullYear() + 1);
+  }
+  const key = (t: number) => {
+    const d = new Date(t * 1000);
+    return unit === "hour" ? d.getHours() : unit === "day" ? d.getDate() : unit === "month" ? d.getMonth() : d.getFullYear();
+  };
+  for (const step of steps) {
+    const picked = all.filter((t) => key(t) % step === 0);
+    if (picked.length <= maxTicks) return picked;
+  }
+  return all.filter((_, i) => i % Math.ceil(all.length / maxTicks) === 0);
 }
 
 function fmtTipTime(sec: number, range: RangeKey) {
@@ -42,6 +75,20 @@ function niceTicks(min: number, max: number, count: number) {
   return ticks;
 }
 
+// 로그 축 눈금: 배율 1·2·5 × 10^n (너무 많으면 10^n만)
+function logTicks(rMin: number, rMax: number) {
+  const pick = (ms: number[]) => {
+    const out: number[] = [];
+    for (let e = -4; e <= 6; e++) for (const m of ms) {
+      const r = m * 10 ** e;
+      if (r >= rMin && r <= rMax) out.push(r);
+    }
+    return out;
+  };
+  const fine = pick([1, 2, 5]);
+  return (fine.length > 7 ? pick([1]) : fine).map((r) => (r - 1) * 100);
+}
+
 // t 시점 직전(포함)의 값 — 거래 시간이 다른 자산도 같은 시각으로 읽기 위함
 function valueAt(pts: Series["pts"], t: number) {
   if (!pts.length || t < pts[0].t) return null;
@@ -55,7 +102,13 @@ function valueAt(pts: Series["pts"], t: number) {
   return pts[lo].v;
 }
 
-export default function CompareChart({ quotes, range }: { quotes: Quote[]; range: RangeKey }) {
+// 데이터가 실제로 덮는 시간 길이로 축 눈금 단위를 정함 (하위 구간 확대 시에도 맞도록)
+function scaleFor(span: number): RangeKey {
+  const day = 86400;
+  return span <= 2 * day ? "1d" : span <= 10 * day ? "1w" : span <= 400 * day ? "1y" : "3y";
+}
+
+export default function CompareChart({ quotes, resetKey }: { quotes: Quote[]; resetKey: string }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -69,11 +122,20 @@ export default function CompareChart({ quotes, range }: { quotes: Quote[]; range
     return () => ro.disconnect();
   }, []);
 
+  // 기간/구간이 바뀌면 이전 호버 시각은 의미가 없음
+  useEffect(() => setHoverT(null), [resetKey]);
+
   const series: Series[] = useMemo(
     () =>
       quotes.map((q, slot) => {
-        const base = q.prevClose ?? q.spark[0];
-        const pts = q.error || !base ? [] : q.spark.map((v, i) => ({ t: q.times[i], v: (v / base - 1) * 100 }));
+        const spark = q.spark ?? [];
+        const times = q.times ?? [];
+        const base = q.prevClose ?? spark[0];
+        // 시각이 없거나 길이가 어긋난 데이터(예: 이전 버전 API 응답)는 그리지 않음
+        const ok = !q.error && !!base && times.length === spark.length;
+        const pts = ok
+          ? spark.map((v, i) => ({ t: times[i], v: (v / base - 1) * 100 })).filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v))
+          : [];
         return { q, slot, pts };
       }),
     [quotes],
@@ -83,20 +145,35 @@ export default function CompareChart({ quotes, range }: { quotes: Quote[]; range
   const all = visible.flatMap((s) => s.pts);
   const t0 = Math.min(...all.map((p) => p.t));
   const t1 = Math.max(...all.map((p) => p.t));
+  const range = scaleFor(t1 - t0);
   const vMin = Math.min(0, ...all.map((p) => p.v));
   const vMax = Math.max(0, ...all.map((p) => p.v));
-  const vPad = (vMax - vMin) * 0.08 || 1;
-  const yTicks = niceTicks(vMin - vPad, vMax + vPad, 5);
-  const y0 = Math.min(yTicks[0], vMin);
-  const y1 = Math.max(yTicks[yTicks.length - 1], vMax);
+  // 자산 간 배율 차이가 크면(예: 10년 비트코인 +17,000%) 선형 축에선 나머지가 바닥에 붙으므로 로그 축 사용
+  const rMin = 1 + vMin / 100;
+  const rMax = 1 + vMax / 100;
+  const useLog = rMin > 0 && rMax / rMin > 4;
+  const f = (v: number) => (useLog ? Math.log10(1 + v / 100) : v);
+  let yTicks: number[];
+  let y0: number;
+  let y1: number;
+  if (useLog) {
+    const lPad = (Math.log10(rMax) - Math.log10(rMin)) * 0.05;
+    y0 = Math.log10(rMin) - lPad;
+    y1 = Math.log10(rMax) + lPad;
+    yTicks = logTicks(10 ** y0, 10 ** y1);
+  } else {
+    const vPad = (vMax - vMin) * 0.08 || 1;
+    yTicks = niceTicks(vMin - vPad, vMax + vPad, 5);
+    y0 = Math.min(yTicks[0], vMin);
+    y1 = Math.max(yTicks[yTicks.length - 1], vMax);
+  }
 
   const plotW = Math.max(0, width - PAD.left - PAD.right);
   const plotH = H - PAD.top - PAD.bottom;
   const x = (t: number) => PAD.left + (t1 > t0 ? ((t - t0) / (t1 - t0)) * plotW : plotW / 2);
-  const y = (v: number) => PAD.top + (1 - (v - y0) / (y1 - y0 || 1)) * plotH;
+  const y = (v: number) => PAD.top + (1 - (f(v) - y0) / (y1 - y0 || 1)) * plotH;
 
-  const xTickCount = Math.max(2, Math.floor(plotW / 110));
-  const xTicks = t1 > t0 ? Array.from({ length: xTickCount + 1 }, (_, i) => t0 + ((t1 - t0) * i) / xTickCount) : [];
+  const xTicks = t1 > t0 ? calendarTicks(t0, t1, range, Math.max(2, Math.floor(plotW / 70))) : [];
 
   const onMove = (e: React.PointerEvent<SVGRectElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -106,6 +183,8 @@ export default function CompareChart({ quotes, range }: { quotes: Quote[]; range
     for (const s of visible) for (const p of s.pts) if (Math.abs(p.t - t) < Math.abs(best - t)) best = p.t;
     setHoverT(best);
   };
+
+  const hasData = series.some((s) => s.pts.length > 1);
 
   const toggle = (sym: string) =>
     setHidden((prev) => {
@@ -126,6 +205,9 @@ export default function CompareChart({ quotes, range }: { quotes: Quote[]; range
 
   return (
     <div className="compare">
+      {useLog && visible.length > 0 && (
+        <span className="scale-note" title="자산 간 등락 폭 차이가 커서 로그 축으로 표시합니다">로그 스케일</span>
+      )}
       <ul className="legend">
         {series.map((s) => {
           const last = s.pts[s.pts.length - 1]?.v;
@@ -149,13 +231,25 @@ export default function CompareChart({ quotes, range }: { quotes: Quote[]; range
       </ul>
 
       <div ref={wrap} className="compare-plot">
+        {visible.length === 0 && (
+          <div className="compare-empty">
+            {hasData ? (
+              <>
+                범례에서 비교할 자산을 선택하세요.
+                <button onClick={() => setHidden(new Set())}>모두 보기</button>
+              </>
+            ) : (
+              "이 기간에 표시할 데이터가 없습니다."
+            )}
+          </div>
+        )}
         {width > 0 && visible.length > 0 && (
           <svg width={width} height={H} role="img" aria-label="기간 시작 대비 등락률 비교 차트">
             {yTicks.map((v) => (
               <g key={v}>
                 <line x1={PAD.left} x2={PAD.left + plotW} y1={y(v)} y2={y(v)} className={v === 0 ? "axis-zero" : "gridline"} />
                 <text x={PAD.left + plotW + 6} y={y(v)} dy="0.32em" className="tick-label">
-                  {fmtPct(v).replace(".00", "")}
+                  {fmtTick(v)}
                 </text>
               </g>
             ))}
@@ -165,7 +259,7 @@ export default function CompareChart({ quotes, range }: { quotes: Quote[]; range
                 x={x(t)}
                 y={H - 6}
                 className="tick-label"
-                textAnchor={i === 0 ? "start" : i === xTicks.length - 1 ? "end" : "middle"}
+                textAnchor={x(t) - PAD.left < 20 ? "start" : PAD.left + plotW - x(t) < 20 ? "end" : "middle"}
               >
                 {fmtAxisTime(t, range)}
               </text>
@@ -197,8 +291,11 @@ export default function CompareChart({ quotes, range }: { quotes: Quote[]; range
               width={plotW}
               height={plotH}
               fill="transparent"
+              style={{ touchAction: "pan-y" }}
+              onPointerDown={onMove}
               onPointerMove={onMove}
-              onPointerLeave={() => setHoverT(null)}
+              // 터치는 손을 떼면 pointerleave가 발생 → 마우스일 때만 툴팁 닫기 (터치는 다음 탭까지 유지)
+              onPointerLeave={(e) => e.pointerType === "mouse" && setHoverT(null)}
             />
           </svg>
         )}
