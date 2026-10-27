@@ -1,4 +1,4 @@
-export type Category = "fx" | "commodity" | "index" | "stock" | "macro";
+export type Category = "fx" | "commodity" | "index" | "semiconductor" | "stock" | "macro";
 
 export interface SymbolDef {
   symbol: string; // Yahoo Finance ticker
@@ -20,6 +20,7 @@ export const CATEGORIES: { key: Category; title: string }[] = [
   { key: "fx", title: "환율" },
   { key: "commodity", title: "원자재" },
   { key: "index", title: "주가지수" },
+  { key: "semiconductor", title: "반도체 지수" },
   { key: "stock", title: "개별 종목" },
   { key: "macro", title: "금리 · 변동성 · 가상자산" },
 ];
@@ -51,6 +52,12 @@ export const SYMBOLS: SymbolDef[] = [
   { symbol: "^N225", name: "닛케이 225", sub: "일본", category: "index", digits: 2 },
   { symbol: "000001.SS", name: "상해종합", sub: "중국", category: "index", digits: 2 },
   { symbol: "^JKSE", name: "자카르타종합", sub: "인도네시아 IDX", category: "index", digits: 2 },
+
+  // 반도체 산업 지수 및 추종 ETF (ETF는 지수 자체가 아닌 거래 상품)
+  { symbol: "^SOX", name: "필라델피아 반도체", sub: "PHLX Semiconductor Sector Index · 지수", category: "semiconductor", digits: 2 },
+  { symbol: "SMH", name: "VanEck 반도체 ETF", sub: "미국 상장 반도체 ETF · USD", category: "semiconductor", digits: 2 },
+  { symbol: "SOXX", name: "iShares 반도체 ETF", sub: "미국 상장 반도체 ETF · USD", category: "semiconductor", digits: 2 },
+  { symbol: "091160.KS", name: "KODEX 반도체 ETF", sub: "국내 반도체 ETF · KRW", category: "semiconductor", digits: 0 },
 
   // 개별 종목
   { symbol: "005930.KS", name: "삼성전자", sub: "005930 · KRW", category: "stock", digits: 0 },
