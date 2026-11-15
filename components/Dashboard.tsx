@@ -256,7 +256,7 @@ export default function Dashboard() {
             직접 비교
           </button>
         </nav>
-        <div className="controls">
+        <div className="controls"><a href="/capital" style={{alignSelf:"center",whiteSpace:"nowrap",fontWeight:700,color:"var(--accent)",textDecoration:"none",fontSize:13}}>글로벌 자산 ↗</a>
           <div className="seg" role="group" aria-label="보기">
             <button aria-pressed={view === "cards"} className={view === "cards" ? "active" : ""} onClick={() => setView("cards")}>
               카드
