@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const revalidate = 86400;
+const BOND_REFERENCE = {value:160.7,period:"2025",publishedAt:"2026-08-19",sourceUrl:"https://www.sifma.org/news/blog/2026-capital-markets-fact-book-key-findings",source:"SIFMA 2026 Capital Markets Fact Book",note:"2026년 8월 19일 발표된 2025년 말 글로벌 채권 발행잔액. 현재 시세가 아닌 연말 잔액"};
 const FALLBACK = {value:169.1044265,period:"2026-10",publishedAt:"2026-10-01",sourceUrl:"https://focus.world-exchanges.org/issue/november-2026/dashboard",source:"World Federation of Exchanges",note:"2026년 11월 대시보드(2026년 10월 발행)에서 확인한 기준값"};
 const months=["january","february","march","april","may","june","july","august","september","october","november","december"];
 function recent(date:string) {
@@ -9,6 +10,18 @@ function recent(date:string) {
 }
 function strip(html:string) {
  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi," ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi," ").replace(/<[^>]*>/g," ").replace(/&nbsp;|&#160;/gi," ").replace(/\s+/g," ");
+}
+async function latestBond() {
+ try {
+  const response=await fetch("https://www.sifma.org/research/statistics/fact-book",{next:{revalidate:86400},signal:AbortSignal.timeout(8000)});
+  if(response.ok) {
+   const text=strip(await response.text());
+   const match=text.match(/Global fixed income debt outstanding[^$]{0,100}\$([\d,.]+) trillion in (20\d{2})/i);
+   if(match&&Number(match[1])>50&&Number(match[1])<400&&match[2]==="2025"&&recent(BOND_REFERENCE.publishedAt))
+    return {...BOND_REFERENCE,value:Number(match[1]),note:"SIFMA Fact Book 수치 자동 확인. 2026년 8월 19일 발행일 검증"};
+  }
+ } catch {}
+ return recent(BOND_REFERENCE.publishedAt)?BOND_REFERENCE:null;
 }
 async function latestWfe() {
  const now=new Date();
@@ -38,8 +51,10 @@ async function latestWfe() {
 export async function GET(){
  const fresh=await latestWfe();
  const result=fresh??(recent(FALLBACK.publishedAt)?FALLBACK:null);
+ const bond=await latestBond();
  return NextResponse.json({asOf:new Date().toISOString(),assets:[
   {key:"equity",label:"상장주식",...(result??{value:null,period:null,publishedAt:null,sourceUrl:null,source:null,note:"최근 6개월 내 검증 가능한 WFE 자료 없음"})},
-  ...["부동산","채권","금","가상자산"].map((label,i)=>({key:["property","bonds","gold","crypto"][i],label,value:null,period:null,publishedAt:null,sourceUrl:null,source:null,note:"최근 6개월 내 동일 범위의 글로벌 총액 자료 미연결"}))
+  {key:"bonds",label:"채권",...(bond??{value:null,period:null,publishedAt:null,sourceUrl:null,source:null,note:"최근 6개월 내 발행된 글로벌 채권 총액 자료 없음"})},
+  ...["부동산","금","가상자산"].map((label,i)=>({key:["property","gold","crypto"][i],label,value:null,period:null,publishedAt:null,sourceUrl:null,source:null,note:"최근 6개월 내 동일 범위의 글로벌 총액 자료 미연결"}))
  ],freshnessRule:"source publication within 6 calendar months; fetch time does not count"}, {headers:{"Cache-Control":"public, s-maxage=86400, stale-while-revalidate=3600"}});
 }
