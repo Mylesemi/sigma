@@ -22,12 +22,14 @@ function isFresh(iso: string | undefined) {
 export default function CapitalPage() {
   const [data, setData] = useState<CapitalData | null>(null);
   const [error, setError] = useState(false);
+  const [live, setLive] = useState<{asOf:string;assets:{key:string;label:string;value:number|null;period:string|null;publishedAt:string|null;sourceUrl:string|null;source:string|null;note:string}[]}|null>(null);
   useEffect(() => {
     let alive = true;
     fetch("/data/global-capital.json", { cache: "no-store" })
       .then(r => { if (!r.ok) throw new Error("missing"); return r.json(); })
       .then(d => { if (alive) setData(d); })
       .catch(() => { if (alive) setError(true); });
+    fetch("/api/global-capital", { cache: "no-store" }).then(r=>{if(!r.ok)throw new Error("API unavailable");return r.json()}).then(d=>{if(alive)setLive(d)}).catch(()=>{if(alive)setError(true)});
     return () => { alive = false; };
   }, []);
   // World Bank's annual observation year and the time we fetched it are NOT the
@@ -42,9 +44,9 @@ export default function CapitalPage() {
       <div className="capital-panel">
         <h2>최신 자산 규모</h2>
         <div className="capital-kpis">
-          {["부동산","상장주식","채권","금","가상자산"].map(name => <div className="capital-card" key={name}><small>{name}</small><strong style={{fontSize:22}}>최신 자료 확인 필요</strong><span style={{color:"var(--muted)",fontSize:12}}>발표일 검증된 6개월 이내 자료 없음</span></div>)}
+          {(live?.assets ?? ["상장주식","부동산","채권","금","가상자산"].map((label,i)=>({key:String(i),label,value:null,period:null,publishedAt:null,sourceUrl:null,source:null,note:"자료 확인 중"}))).map(asset => <div className="capital-card" key={asset.key}><small>{asset.label}</small><strong style={{fontSize:22}}>{asset.value===null?"최신 자료 없음":`${asset.value.toFixed(2)}T`}</strong><span style={{color:"var(--muted)",fontSize:12}}>{asset.value===null?asset.note:`발표 기준 ${asset.publishedAt} · ${asset.period}`}</span>{asset.sourceUrl&&<a href={asset.sourceUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"var(--accent)"}}>{asset.source} ↗</a>}</div>)}
         </div>
-        <p className="capital-warning">이전 화면의 2024~2025년 고정값은 현재 시장 규모에서 제거했습니다. 값이 없다는 것은 시장 규모가 0이라는 의미가 아닙니다.</p>
+        <p className="capital-warning">WFE 최근 발표값은 자동 조회하며, 원천 페이지에서 수집하지 못한 경우 확인된 2026년 10월 기준값을 유효기간 내에서만 사용합니다. 값이 없다는 것은 시장 규모가 0이라는 뜻이 아닙니다.</p>
       </div>
       <div className="capital-panel">
         <h2>데이터 갱신 현황</h2>
