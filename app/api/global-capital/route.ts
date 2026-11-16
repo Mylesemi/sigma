@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const revalidate = 86400;
-const BOND_REFERENCE = {value:160.7,period:"2025",publishedAt:"2026-08-19",sourceUrl:"https://www.sifma.org/news/blog/2026-capital-markets-fact-book-key-findings",source:"SIFMA 2026 Capital Markets Fact Book",note:"2026년 8월 19일 발표된 2025년 말 글로벌 채권 발행잔액. 현재 시세가 아닌 연말 잔액"};
+const BOND_REFERENCE = {value:160.7,period:"2025",publishedAt:"2026-08-13",sourceUrl:"https://www.sifma.org/research/reports/fact-book",source:"SIFMA 2026 Capital Markets Fact Book",note:"2026년 8월 13일 발표된 2025년 말 글로벌 채권 발행잔액. 현재 시세가 아닌 연말 잔액"};
 const FALLBACK = {value:169.1044265,period:"2026-10",publishedAt:"2026-10-01",sourceUrl:"https://focus.world-exchanges.org/issue/november-2026/dashboard",source:"World Federation of Exchanges",note:"2026년 11월 대시보드(2026년 10월 발행)에서 확인한 기준값"};
 const months=["january","february","march","april","may","june","july","august","september","october","november","december"];
 function recent(date:string) {
@@ -13,12 +13,12 @@ function strip(html:string) {
 }
 async function latestBond() {
  try {
-  const response=await fetch("https://www.sifma.org/research/statistics/fact-book",{next:{revalidate:86400},signal:AbortSignal.timeout(8000)});
+  const response=await fetch("https://www.sifma.org/research/reports/fact-book",{next:{revalidate:86400},signal:AbortSignal.timeout(8000)});
   if(response.ok) {
    const text=strip(await response.text());
    const match=text.match(/Global fixed income debt outstanding[^$]{0,100}\$([\d,.]+) trillion in (20\d{2})/i);
    if(match&&Number(match[1])>50&&Number(match[1])<400&&match[2]==="2025"&&recent(BOND_REFERENCE.publishedAt))
-    return {...BOND_REFERENCE,value:Number(match[1]),note:"SIFMA Fact Book 수치 자동 확인. 2026년 8월 19일 발행일 검증"};
+    return {...BOND_REFERENCE,value:Number(match[1]),note:"SIFMA Fact Book 수치 자동 확인. 2026년 8월 13일 발행일 검증"};
   }
  } catch {}
  return recent(BOND_REFERENCE.publishedAt)?BOND_REFERENCE:null;
