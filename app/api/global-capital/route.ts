@@ -24,9 +24,13 @@ async function latestWfe() {
    if(!match)continue;
    const value=Number(match[1].replace(/,/g,""))/1e6;
    if(value<50||value>400)continue;
-   const publishedAt=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-01`;
+   const publication=text.match(/Published:\s*([A-Za-z]+)\s+(20\d{2})/i);
+   if(!publication)continue;
+   const publishedMonth=months.indexOf(publication[1].toLowerCase());
+   if(publishedMonth<0)continue;
+   const publishedAt=`${publication[2]}-${String(publishedMonth+1).padStart(2,"0")}-01`;
    if(!recent(publishedAt))continue;
-   return {value,period:publishedAt.slice(0,7),publishedAt,sourceUrl:url,source:"World Federation of Exchanges",note:"발표 월의 1일을 보수적 기준일로 적용. 시장가치 단위 USD 조 달러"};
+   return {value,period:`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`,publishedAt,sourceUrl:url,source:"World Federation of Exchanges",note:"발표 월의 1일을 보수적 기준일로 적용. 대시보드 호수와 발표월을 구분함"};
   }catch{continue}
  }
  return null;
