@@ -1,5 +1,10 @@
 name: Update global capital data
 on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/update_global_capital.py"
+      - ".github/workflows/update-global-capital.yml"
   schedule:
     - cron: "23 3 * * 1"
   workflow_dispatch:
