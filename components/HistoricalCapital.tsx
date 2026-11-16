@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Datum={year:number;value:number};
 const SERIES:{key:string;label:string;color:string;source:string;points:Datum[]}[]=[
@@ -20,6 +20,9 @@ const citations=[
 ];
 export default function HistoricalCapital(){
  const [active,setActive]=useState<string[]>(SERIES.map(s=>s.key));
+ const [live,setLive]=useState<{updatedAt:string;series:{stockMarketCap:Record<string,number>;gdp:Record<string,number>};countries:Record<string,{name:string;series:Record<string,number>}>;warnings:string[]}|null>(null);
+ const [liveError,setLiveError]=useState(false);
+ useEffect(()=>{let cancelled=false;fetch("/data/global-capital.json",{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error("No published data");return r.json()}).then(d=>{if(!cancelled)setLive(d)}).catch(()=>{if(!cancelled)setLiveError(true)});return()=>{cancelled=true}},[]);
  const [market,setMarket]=useState("stocks");
  const [hover,setHover]=useState<{year:number;value:number;label:string}|null>(null);
  const filtered=SERIES.filter(s=>active.includes(s.key));
@@ -28,7 +31,17 @@ export default function HistoricalCapital(){
  const y=(value:number)=>plot.bottom-value/450*(plot.bottom-plot.top);
  const current=SHARE.find(s=>s.key===market)!;
  const palette=["#2a78d6","#8b5cf6","#16a085","#eda100","#e87ba4","#9ca3af"];
+ const latest=live?Object.keys(live.series.stockMarketCap).sort().reverse()[0]:null;
+ const world=latest?live!.series.stockMarketCap[latest]:0;
+ const countryShares=latest&&world>0?Object.entries(live!.countries).map(([code,c])=>({code,name:c.name,value:c.series[latest]})).filter((v):v is {code:string;name:string;value:number}=>typeof v.value==="number").sort((a,b)=>b.value-a.value):[];
  return <div className="capital-history">
+  <div className="capital-panel"><h2>자동 갱신 · 세계 주식시장과 GDP</h2><p>World Bank Open Data의 연간 통계를 매주 월요일 자동 확인합니다. 최신 공표 연도 기준이며 일간 실시간 시세가 아닙니다.</p>
+  {live&&latest?<><p><strong>{latest}년 세계 상장주식 시가총액: ${world.toFixed(2)}T</strong> · GDP: ${live.series.gdp[latest]?.toFixed(2)??"미집계"}T</p>
+  <p>데이터 파일 갱신: {new Date(live.updatedAt).toLocaleString("ko-KR")}</p>
+  <div className="capital-bars">{countryShares.map(v=><div className="capital-bar-row" key={v.code}><div className="capital-bar-label"><b>{v.name}</b><span>${v.value.toFixed(2)}T · {(v.value/world*100).toFixed(1)}%</span></div><div className="capital-track"><div style={{width:Math.min(100,v.value/world*100)+"%",background:"var(--accent)"}}/></div></div>)}</div>
+  <p className="capital-warning">국가별 값은 해당 연도에 데이터가 발표된 국가만 표시합니다. 전체 국가를 합산한 점유율이 아니며, 세계 집계와 개별 국가의 시장 범위가 다를 수 있습니다.</p>
+  {live.warnings.length>0&&<p className="capital-warning">일부 자료 갱신 지연: {live.warnings.join(", ")}</p>}</>:<p className="capital-pending">{liveError?"자동 통계 파일이 아직 게시되지 않았습니다. 첫 GitHub Actions 실행 후 표시됩니다.":"자동 통계를 불러오는 중…"}</p>}
+  <a href="https://data.worldbank.org/indicator/CM.MKT.LCAP.CD" target="_blank" rel="noopener noreferrer" style={{color:"var(--accent)",fontSize:12}}>World Bank 원천 데이터 ↗</a></div>
   <div className="capital-panel"><h2>글로벌 자산 규모 변화</h2><p>공식 발표된 연말 값만 표시합니다. 점 사이의 선은 시각적 연결이며 중간 연도의 관측값이 아닙니다.</p>
    <div className="capital-checks">{SERIES.map(s=><label key={s.key}><input type="checkbox" checked={active.includes(s.key)} onChange={()=>setActive(p=>p.includes(s.key)?p.filter(k=>k!==s.key):[...p,s.key])}/><span style={{background:s.color}}/>{s.label}</label>)}</div>
    <div style={{overflowX:"auto"}}><svg viewBox="0 0 800 290" role="img" aria-label="2014년부터 2025년까지 부동산 주식 채권의 발표된 시장 규모" style={{width:"100%",minWidth:490}}>
