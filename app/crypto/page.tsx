@@ -33,6 +33,10 @@ export default function CryptoPage({ embedded = false }: { embedded?: boolean })
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [mode,setMode]=useState<"return"|"z">("return");
+  const [mvrv,setMvrv]=useState<{points:{t:number;mvrv:number;z:number}[];updatedAt:string}|null>(null);
+  const [mvrvError,setMvrvError]=useState("");
+  const [mvrvMode,setMvrvMode]=useState<"z"|"ratio">("z");
+  useEffect(()=>{let alive=true;fetch("/api/mvrv").then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||"HTTP "+r.status);return j}).then(j=>{if(alive)setMvrv(j)}).catch(e=>{if(alive)setMvrvError(String(e))});return ()=>{alive=false}},[]);
   const period=periods.find(p=>p.key===span)!;
   useEffect(()=>{
     let alive=true;
@@ -82,7 +86,29 @@ export default function CryptoPage({ embedded = false }: { embedded?: boolean })
         </svg></div>}
         <div className="crypto-legend">{values.map(a=><div key={a.symbol}><i style={{background:a.color}}/><span>{a.label}</span><strong>{mode==="return"&&a.latest!=null?fmt(a.latest):a.points.at(-1)?.v.toFixed(2)}</strong></div>)}</div>
       </section>
-      <section className="crypto-panel"><h2>비트코인 MVRV Z-Score</h2><p>MVRV Z-Score는 시가총액과 실현시가총액의 차이를 시가총액의 표준편차로 나눈 온체인 지표입니다. 가격만으로 계산할 수 없으므로 검증되지 않은 수치를 표시하지 않습니다.</p><a href="https://studio.glassnode.com/charts/market/mvrv-z-score" target="_blank" rel="noopener noreferrer">Glassnode에서 MVRV Z-Score 확인 ↗</a><p>참고: 이 페이지의 가격 Z-Score는 별도의 통계 지표이며 MVRV를 대체하지 않습니다.</p></section>
+      <section className="crypto-panel">
+        <h2>비트코인 온체인 MVRV {mvrvMode==="z"?"Z-Score":"비율"}</h2>
+        <p>실제 온체인 데이터 기반 지표입니다. 위의 가격 Z-Score와 계산 기준이 다릅니다.</p>
+        <div className="crypto-controls"><div className="crypto-pills"><button className={mvrvMode==="z"?"active":""} onClick={()=>setMvrvMode("z")}>MVRV Z-Score</button><button className={mvrvMode==="ratio"?"active":""} onClick={()=>setMvrvMode("ratio")}>MVRV 비율</button></div></div>
+        {mvrvError&&<p role="alert">온체인 데이터 조회 실패: {mvrvError}. <a href="https://studio.glassnode.com/charts/market/mvrv-z-score" target="_blank" rel="noopener noreferrer">외부 차트 보기 ↗</a></p>}
+        {!mvrv&&!mvrvError&&<p role="status">온체인 데이터 불러오는 중…</p>}
+        {mvrv&&(()=>{
+          const pts=mvrv.points.filter(p=>p.t>=Date.now()/1000-period.days*86400);
+          const vals=pts.map(p=>mvrvMode==="z"?p.z:p.mvrv);
+          if(pts.length<2)return <p>선택 기간의 온체인 데이터가 없습니다.</p>;
+          const low=Math.min(0,...vals),high=Math.max(0,...vals);
+          const t0=pts[0].t,t1=pts[pts.length-1].t;
+          const xx=(t:number)=>left+(t-t0)/Math.max(1,t1-t0)*(width-left-right);
+          const yy=(v:number)=>top+(high-v)/Math.max(0.0001,high-low)*(height-top-bottom);
+          return <><div className="crypto-chart"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`BTC MVRV ${mvrvMode==="z"?"Z-Score":"비율"} 차트`}>
+            {Array.from({length:5},(_,i)=>low+(high-low)*i/4).map((v,i)=><g key={i}><line x1={left} x2={width-right} y1={yy(v)} y2={yy(v)} stroke="var(--border)"/><text x={left-8} y={yy(v)+4} textAnchor="end" fill="var(--muted)" fontSize="12">{v.toFixed(2)}</text></g>)}
+            <path d={plotPath(pts.map(p=>({x:xx(p.t),y:yy(mvrvMode==="z"?p.z:p.mvrv)})))} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinejoin="round"/>
+            <text x={left} y={height-8} fontSize="12" fill="var(--muted)">{new Date(t0*1000).toLocaleDateString("ko-KR")}</text><text x={width-right} y={height-8} textAnchor="end" fontSize="12" fill="var(--muted)">{new Date(t1*1000).toLocaleDateString("ko-KR")}</text>
+          </svg></div><div className="crypto-legend"><div><i style={{background:"#f59e0b"}}/><span>BTC MVRV {mvrvMode==="z"?"Z-Score":"비율"}</span><strong>{vals[vals.length-1].toFixed(2)}</strong></div></div><p>최종 관측일: {new Date(mvrv.updatedAt).toLocaleDateString("ko-KR")} (UTC 일별 데이터)</p></>;
+        })()}
+        <p>{mvrvMode==="z"?"(시가총액 − 실현시가총액) ÷ 시가총액의 누적 역사적 표준편차. 음수는 시가총액이 실현시가총액보다 낮다는 뜻입니다.":"시가총액 ÷ 실현시가총액. 1 미만은 온체인 원가 추정치보다 시장가치가 낮다는 뜻입니다."}</p>
+        <p>출처: <a href="https://docs.coinmetrics.io/packages/coin-metrics-community-data" target="_blank" rel="noopener noreferrer">Coin Metrics Community API ↗</a> · CapMVRVCur, CapMrktCurUSD · 6시간 캐시 · CC BY-NC. 과거부터 각 시점까지의 누적 표준편차로 계산하며, 기간 버튼은 차트 표시 구간만 변경합니다. 유료 Glassnode 지표와 수치가 다를 수 있습니다.</p>
+      </section>
       <p className="crypto-disclaimer">출처: Yahoo Finance · 미국 국채 ETF(IEF)는 채권 가격의 대용 지표이며, ^TNX는 10년물 수익률(%)입니다. 금은 현물 대신 금 선물(GC=F)을 사용합니다. 24시간 거래하는 코인과 휴장하는 전통자산의 관측 시각이 다릅니다. 투자 조언이 아닙니다.</p>
     </main>
   </div>;
