@@ -37,7 +37,7 @@ export default function CryptoPage() {
   useEffect(()=>{
     let alive=true;
     setBusy(true);setError("");
-    fetch("/api/quotes?range="+period.api,{cache:"no-store"})
+    fetch("/api/quotes?range="+period.api+"&extra=IEF",{cache:"no-store"})
       .then(r=>{if(!r.ok)throw Error("HTTP "+r.status);return r.json() as Promise<QuotesResponse>})
       .then(r=>{if(alive)setData(r)})
       .catch(e=>{if(alive)setError(String(e))})
