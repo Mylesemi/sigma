@@ -7,6 +7,7 @@ import { RANGES, buildSegments, getRange, type RangeKey, type Segment } from "@/
 import { CATEGORIES, SYMBOLS, isBuiltin } from "@/lib/symbols";
 import { DEFAULT_STATE, MAX_PICKS, parseUrlState, toSearch, type Filter, type View } from "@/lib/urlState";
 import CompareChart from "./CompareChart";
+import CryptoPage from "@/app/crypto/page";
 import ErrorBoundary from "./ErrorBoundary";
 import PickList from "./PickList";
 import QuoteCard from "./QuoteCard";
@@ -280,7 +281,7 @@ export default function Dashboard() {
       )}
 
       <main className={stale ? "stale" : ""} aria-busy={stale}>
-        {sections.map((c) => (
+        {filter === "crypto" ? <CryptoPage embedded /> : sections.map((c) => (
           <section key={c.key}>
             <h2>
               {c.title}
