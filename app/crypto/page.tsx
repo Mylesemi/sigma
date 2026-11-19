@@ -26,7 +26,7 @@ function series(q: Quote | undefined, from: number) {
 function plotPath(points:{x:number;y:number}[]) {
   return points.map((p,i)=>(i?"L":"M")+p.x.toFixed(1)+","+p.y.toFixed(1)).join(" ");
 }
-export default function CryptoPage() {
+export default function CryptoPage({ embedded = false }: { embedded?: boolean }) {
   const [span,setSpan]=useState<Span>("1y");
   const [selected,setSelected]=useState<string[]>(["BTC-USD","ETH-USD","GC=F","^GSPC","IEF"]);
   const [data,setData]=useState<QuotesResponse|null>(null);
@@ -67,7 +67,7 @@ export default function CryptoPage() {
   const x=(t:number)=>left+(t-minT)/Math.max(1,maxT-minT)*(width-left-right);
   const y=(v:number)=>top+(hi-v)/Math.max(1,hi-lo)*(height-top-bottom);
   return <div className="crypto-page">
-    <header className="crypto-head"><a href="/" className="crypto-brand">Σ SIGMA</a><nav><a href="/">시장 대시보드</a><a href="/capital">글로벌 자산</a><b>가상화폐</b></nav></header>
+    {!embedded && <header className="crypto-head"><a href="/" className="crypto-brand">Σ SIGMA</a><nav><a href="/">시장 대시보드</a><a href="/capital">글로벌 자산</a><b>가상화폐</b></nav></header>}
     <main className="crypto-main">
       <div className="crypto-intro"><small>CRYPTO / CROSS-ASSET</small><h1>가상화폐 · 글로벌 자산 비교</h1><p>비트코인과 이더리움을 금, S&P 500, 미국 국채와 동일한 기간 기준으로 비교합니다.</p></div>
       <div className="crypto-controls"><div className="crypto-pills">{periods.map(p=><button key={p.key} className={span===p.key?"active":""} onClick={()=>setSpan(p.key)}>{p.label}</button>)}</div><div className="crypto-pills"><button className={mode==="return"?"active":""} onClick={()=>setMode("return")}>누적 수익률</button><button className={mode==="z"?"active":""} onClick={()=>setMode("z")}>가격 Z-Score</button></div></div>
