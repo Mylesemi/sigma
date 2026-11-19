@@ -1,4 +1,4 @@
-export type Category = "fx" | "commodity" | "index" | "semiconductor" | "stock" | "macro";
+export type Category = "fx" | "commodity" | "index" | "semiconductor" | "stock" | "macro" | "crypto";
 
 export interface SymbolDef {
   symbol: string; // Yahoo Finance ticker
@@ -22,7 +22,8 @@ export const CATEGORIES: { key: Category; title: string }[] = [
   { key: "index", title: "주가지수" },
   { key: "semiconductor", title: "반도체 지수" },
   { key: "stock", title: "개별 종목" },
-  { key: "macro", title: "금리 · 변동성 · 가상자산" },
+  { key: "macro", title: "금리 · 변동성" },
+  { key: "crypto", title: "가상화폐" },
 ];
 
 export const SYMBOLS: SymbolDef[] = [
@@ -68,6 +69,6 @@ export const SYMBOLS: SymbolDef[] = [
   { symbol: "^TNX", name: "미 10년물", sub: "US 10Y 국채금리 (%)", category: "macro", digits: 3 },
   { symbol: "^IRX", name: "미 3개월물", sub: "US 13W 국채금리 (%)", category: "macro", digits: 3 },
   { symbol: "^VIX", name: "VIX", sub: "변동성 지수", category: "macro", digits: 2 },
-  { symbol: "BTC-USD", name: "비트코인", sub: "BTC · USD", category: "macro", digits: 0 },
-  { symbol: "ETH-USD", name: "이더리움", sub: "ETH · USD", category: "macro", digits: 2 },
+  { symbol: "BTC-USD", name: "비트코인", sub: "BTC · USD", category: "crypto", digits: 0 },
+  { symbol: "ETH-USD", name: "이더리움", sub: "ETH · USD", category: "crypto", digits: 2 },
 ];
