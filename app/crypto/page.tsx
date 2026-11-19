@@ -18,6 +18,8 @@ const periods: {key: Span; label: string; days: number; api: string}[] = [
   {key:"3y",label:"3년",days:1095,api:"3y"},
   {key:"10y",label:"10년",days:3650,api:"10y"},
 ];
+const priceUnit = (symbol:string) => symbol==="^TNX"?"%":symbol==="^GSPC"?"pt":"USD";
+const fmtPrice = (v:number,symbol:string) => new Intl.NumberFormat("en-US",{maximumFractionDigits:symbol==="^TNX"?3:symbol==="BTC-USD"?0:2}).format(v)+" "+priceUnit(symbol);
 const fmt = (v:number) => (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
 function series(q: Quote | undefined, from: number) {
   if (!q) return [] as {t:number;p:number}[];
@@ -32,7 +34,7 @@ export default function CryptoPage({ embedded = false }: { embedded?: boolean })
   const [data,setData]=useState<QuotesResponse|null>(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
-  const [mode,setMode]=useState<"return"|"z">("return");
+  const [mode,setMode]=useState<"return"|"z"|"price">("return");
   const [mvrv,setMvrv]=useState<{points:{t:number;mvrv:number;z:number}[];updatedAt:string}|null>(null);
   const [mvrvError,setMvrvError]=useState("");
   const [mvrvMode,setMvrvMode]=useState<"z"|"ratio">("z");
@@ -61,7 +63,7 @@ export default function CryptoPage({ embedded = false }: { embedded?: boolean })
       const mean=logs.reduce((s,v)=>s+v,0)/(logs.length||1);
       const std=Math.sqrt(logs.reduce((s,v)=>s+(v-mean)**2,0)/(logs.length||1));
       const zs=pts.map((v,i)=>({t:v.t,v:std>0?(logs[i]-mean)/std:0}));
-      return {...a,quote:q,points:mode==="return"?returns:zs,latest:returns.at(-1)?.v,price:pts.at(-1)?.p};
+      return {...a,quote:q,points:mode==="return"?returns:mode==="z"?zs:pts.map(v=>({t:v.t,v:v.p})),latest:returns.at(-1)?.v,price:pts.at(-1)?.p};
     }).filter(a=>selected.includes(a.symbol) && a.points.length>=2);
   },[data,period.days,selected,mode]);
   const all=values.flatMap(a=>a.points);
@@ -74,17 +76,18 @@ export default function CryptoPage({ embedded = false }: { embedded?: boolean })
     {!embedded && <header className="crypto-head"><a href="/" className="crypto-brand">Σ SIGMA</a><nav><a href="/">시장 대시보드</a><a href="/capital">글로벌 자산</a><b>가상화폐</b></nav></header>}
     <main className="crypto-main">
       <div className="crypto-intro"><small>CRYPTO / CROSS-ASSET</small><h1>가상화폐 · 글로벌 자산 비교</h1><p>비트코인과 이더리움을 금, S&P 500, 미국 국채와 동일한 기간 기준으로 비교합니다.</p></div>
-      <div className="crypto-controls"><div className="crypto-pills">{periods.map(p=><button key={p.key} className={span===p.key?"active":""} onClick={()=>setSpan(p.key)}>{p.label}</button>)}</div><div className="crypto-pills"><button className={mode==="return"?"active":""} onClick={()=>setMode("return")}>누적 수익률</button><button className={mode==="z"?"active":""} onClick={()=>setMode("z")}>가격 Z-Score</button></div></div>
+      <div className="crypto-controls"><div className="crypto-pills">{periods.map(p=><button key={p.key} className={span===p.key?"active":""} onClick={()=>setSpan(p.key)}>{p.label}</button>)}</div><div className="crypto-pills"><button className={mode==="return"?"active":""} onClick={()=>setMode("return")}>누적 수익률</button><button className={mode==="z"?"active":""} onClick={()=>setMode("z")}>가격 Z-Score</button><button className={mode==="price"?"active":""} onClick={()=>setMode("price")}>실제 가격</button></div></div>
       <div className="crypto-select">{ASSETS.map(a=><label key={a.symbol}><input type="checkbox" checked={selected.includes(a.symbol)} onChange={e=>setSelected(s=>e.target.checked?[...s,a.symbol]:s.filter(v=>v!==a.symbol))}/><i style={{background:a.color}}/>{a.label}</label>)}</div>
-      <section className="crypto-panel"><h2>{mode==="return"?"기간 시작 대비 누적 수익률":"로그 가격의 기간 내 Z-Score"}</h2><p>{mode==="return"?"각 자산의 첫 관측치를 0%로 정규화합니다. 서로 다른 거래일은 연결선으로 표시하며 보간하지 않습니다.":"선택 기간의 로그 가격 평균과 표준편차로 계산한 가격 Z-Score입니다. 온체인 MVRV Z-Score와 다릅니다."}</p>
+      <section className="crypto-panel"><h2>{mode==="return"?"기간 시작 대비 누적 수익률":mode==="z"?"로그 가격의 기간 내 Z-Score":"실제 가격 · 자산별 차트"}</h2><p>{mode==="return"?"각 자산의 첫 관측치를 0%로 정규화합니다. 서로 다른 거래일은 연결선으로 표시하며 보간하지 않습니다.":mode==="z"?"선택 기간의 로그 가격 평균과 표준편차로 계산한 가격 Z-Score입니다. 온체인 MVRV Z-Score와 다릅니다.":"실제 시세는 자산별 단위와 가격 규모가 달라 개별 차트로 표시합니다. 금은 선물 USD/트로이온스, 국채 ETF는 USD/주, 국채금리는 %입니다."}</p>
         {busy&&<p role="status">데이터 불러오는 중…</p>}{error&&<p role="alert">데이터 조회 실패: {error}</p>}
         {!busy&&!error&&values.length===0&&<p>선택한 기간에 유효한 데이터가 없습니다.</p>}
-        {values.length>0&&<div className="crypto-chart"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="선택 자산의 기간별 비교 선 그래프">
+        {mode==="price"&&values.length>0&&<div className="crypto-price-grid">{values.map(a=>{const ps=a.points;const pmin=Math.min(...ps.map(p=>p.v)),pmax=Math.max(...ps.map(p=>p.v));const pad=Math.max((pmax-pmin)*0.08,pmax*0.001);const yMin=pmin-pad,yMax=pmax+pad;const x0=ps[0].t,x1=ps[ps.length-1].t;const xx=(t:number)=>45+(t-x0)/Math.max(1,x1-x0)*495;const yy=(v:number)=>12+(yMax-v)/Math.max(0.000001,yMax-yMin)*136;return <div key={a.symbol} className="crypto-price-card"><div className="crypto-price-head"><span><i style={{background:a.color}}/>{a.label}</span><strong>{a.price!=null?fmtPrice(a.price,a.symbol):"—"}</strong></div><svg viewBox="0 0 550 175" role="img" aria-label={a.label+" 실제 가격 추이"}><line x1="45" x2="540" y1="148" y2="148" stroke="var(--border)"/><path d={plotPath(ps.map(p=>({x:xx(p.t),y:yy(p.v)})))} fill="none" stroke={a.color} strokeWidth="2.5" strokeLinejoin="round"/><text x="40" y="20" textAnchor="end" fontSize="10" fill="var(--muted)">{pmax.toLocaleString("en-US",{maximumFractionDigits:2})}</text><text x="40" y="148" textAnchor="end" fontSize="10" fill="var(--muted)">{pmin.toLocaleString("en-US",{maximumFractionDigits:2})}</text><text x="45" y="169" fontSize="10" fill="var(--muted)">{new Date(x0*1000).toLocaleDateString("ko-KR")}</text><text x="540" y="169" textAnchor="end" fontSize="10" fill="var(--muted)">{new Date(x1*1000).toLocaleDateString("ko-KR")}</text></svg></div>})}</div>}
+        {mode!=="price"&&values.length>0&&<div className="crypto-chart"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="선택 자산의 기간별 비교 선 그래프">
           {Array.from({length:5},(_,i)=>lo+(hi-lo)*i/4).map((v,i)=><g key={i}><line x1={left} x2={width-right} y1={y(v)} y2={y(v)} stroke="var(--border)"/><text x={left-8} y={y(v)+4} textAnchor="end" fill="var(--muted)" fontSize="12">{v.toFixed(mode==="return"?0:1)}{mode==="return"?"%":""}</text></g>)}
           {values.map(a=><path key={a.symbol} d={plotPath(a.points.map(p=>({x:x(p.t),y:y(p.v)})))} fill="none" stroke={a.color} strokeWidth="2.5" strokeLinejoin="round"/>)}
           <text x={left} y={height-8} fontSize="12" fill="var(--muted)">{new Date(minT*1000).toLocaleDateString("ko-KR")}</text><text x={width-right} y={height-8} textAnchor="end" fontSize="12" fill="var(--muted)">{new Date(maxT*1000).toLocaleDateString("ko-KR")}</text>
         </svg></div>}
-        <div className="crypto-legend">{values.map(a=><div key={a.symbol}><i style={{background:a.color}}/><span>{a.label}</span><strong>{mode==="return"&&a.latest!=null?fmt(a.latest):a.points.at(-1)?.v.toFixed(2)}</strong></div>)}</div>
+        {mode!=="price"&&<div className="crypto-legend">{values.map(a=><div key={a.symbol}><i style={{background:a.color}}/><span>{a.label}</span><strong>{mode==="return"&&a.latest!=null?fmt(a.latest):a.points.at(-1)?.v.toFixed(2)}</strong></div>)}</div>}
       </section>
       <section className="crypto-panel">
         <h2>비트코인 온체인 MVRV {mvrvMode==="z"?"Z-Score":"비율"}</h2>
