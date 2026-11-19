@@ -433,3 +433,12 @@ section h2 { font-size: 16px; margin: 24px 0 12px; color: var(--muted); font-wei
 .crypto-legend strong{font-variant-numeric:tabular-nums}
 .crypto-disclaimer{margin-top:22px}
 @media(max-width:600px){.crypto-head{padding:14px 16px}.crypto-head nav{gap:8px;font-size:11px}.crypto-main{padding:24px 16px 60px}.crypto-panel{padding:15px}.crypto-controls{margin-top:20px}}
+
+/* Crypto actual-price small multiples: independent price scales */
+.crypto-price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),1fr));gap:14px;margin-top:16px}
+.crypto-price-card{border:1px solid var(--border);border-radius:12px;padding:14px;min-width:0}
+.crypto-price-card svg{display:block;width:100%;height:auto;margin-top:10px}
+.crypto-price-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.crypto-price-head span{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.crypto-price-head i{display:inline-block;width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.crypto-price-head strong{font-variant-numeric:tabular-nums}
