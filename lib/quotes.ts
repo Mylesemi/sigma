@@ -140,7 +140,7 @@ async function fetchQuote(def: SymbolDef, range: RangeDef, win: QuoteWindow | nu
     // 토·일 데이터 제외 (가상자산 등 주말 거래분). 거래소 현지 시각 기준으로 판단해야
     // 미국 금요일 장(한국 시간 토요일 새벽)이 잘리지 않음. 1일 기간과 주봉·월봉(봉 날짜가 주말일 수 있음)은 제외
     const interval = intervalOf(range, win);
-    const skipWeekends = (win != null || range.key !== "1d") && interval !== "1wk" && interval !== "1mo";
+    const skipWeekends = def.category !== "crypto" && !["BTC-USD", "ETH-USD"].includes(def.symbol) && (win != null || range.key !== "1d") && interval !== "1wk" && interval !== "1mo";
     const offset: number = meta.gmtoffset ?? 0;
     const isWeekend = (t: number) => {
       const day = new Date((t + offset) * 1000).getUTCDay();
